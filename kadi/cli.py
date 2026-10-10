@@ -6,6 +6,7 @@
     kadi dashboard --db kadi.db       read-only dashboard over an existing ledger
     kadi stats --db kadi.db           JSON summary
     kadi prune --db kadi.db --days 30 delete old ledger rows
+    kadi mcp                          MCP server on stdio (agent-as-oracle, no API key)
     kadi verify --db kadi.db          check the tamper-evident hash chain
     kadi anchor --db kadi.db          print the chain head for external safekeeping
 """
@@ -214,6 +215,20 @@ def _cmd_anchor(a) -> int:
     return 0
 
 
+def _cmd_mcp(a) -> int:
+    from .mcp import build, serve_stdio
+    server = build(db=a.db, config=a.config, oracle=a.oracle)
+    mode = "agent-as-oracle" if server.agent_mode else f"oracle {server.engine.oracle.name}"
+    print(f"kadi mcp ready on stdio · {mode} · db {server.engine.store.path}", file=sys.stderr, flush=True)
+    try:
+        serve_stdio(server)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.engine.close()
+    return 0
+
+
 def _cmd_prune(a) -> int:
     from .store import Store
     print(f"deleted {Store(a.db).prune(a.days)} rows older than {a.days} days")
@@ -259,6 +274,13 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--db", default="kadi.db")
     s.add_argument("--window", type=float, help="seconds")
     s.set_defaults(fn=_cmd_stats)
+
+    s = sub.add_parser("mcp", help="run as an MCP server on stdio (for Claude Code, Claude Desktop, ...)")
+    s.add_argument("--db", help="ledger path (default ~/.kadi/mcp.db, or [kadi].db from --config)")
+    s.add_argument("--config", help="kadi.toml with questions and, optionally, an [oracle]")
+    s.add_argument("--oracle", choices=("auto", "agent", "config"), default="auto",
+                   help="agent: the calling model resolves tickets (no API key); config: use kadi.toml [oracle]")
+    s.set_defaults(fn=_cmd_mcp)
 
     s = sub.add_parser("verify", help="verify the tamper-evident ledger chain")
     s.add_argument("--db", default="kadi.db")

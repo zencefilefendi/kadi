@@ -11,9 +11,9 @@ Everything else is escalated, and every escalation teaches the local judge.
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 ![Python ≥ 3.11](https://img.shields.io/badge/python-%E2%89%A53.11-blue.svg)
 ![Dependencies: 0](https://img.shields.io/badge/dependencies-0-brightgreen.svg)
-![Tests: 77](https://img.shields.io/badge/tests-77-brightgreen.svg)
+![Tests: 87](https://img.shields.io/badge/tests-87-brightgreen.svg)
 
-[Theory](docs/THEORY.md) · [Threat model](docs/THREAT_MODEL.md) · [Türkçe](README.tr.md) · [TypeScript client](clients/typescript)
+[Theory](docs/THEORY.md) · [Threat model](docs/THREAT_MODEL.md) · [MCP server](docs/MCP.md) · [Türkçe](README.tr.md) · [TypeScript client](clients/typescript)
 
 </div>
 
@@ -150,6 +150,14 @@ In `kadi.toml`, set `reflex = "embed"` (and optionally `embed_model`). Models ar
 
 Oracles: `AnthropicOracle` (forced enum tool), `OpenAICompatibleOracle` (OpenAI, vLLM, Ollama, llama.cpp, LM Studio; JSON with re-ask), and `FunctionOracle` (any callable: rules, a human review queue, an existing model).
 
+### As an MCP tool for agents: no API key
+
+```bash
+claude mcp add kadi -- kadi mcp          # Claude Code; see docs/MCP.md for Claude Desktop
+```
+
+The calling agent *is* the oracle. `kadi_decide` either returns a label or a ticket; the agent judges ticketed cases itself and reports back with `kadi_resolve`. Kadı learns from those verdicts and, once it can certify the error target, stops asking about routine cases. The guarantee is then relative to the agent's own judgement. Full guide: [docs/MCP.md](docs/MCP.md).
+
 ### As a service, from any language
 
 ```bash
@@ -279,7 +287,8 @@ kadi/redact.py      PII / secret redaction with checksum validation
 kadi/oracles.py     Anthropic / OpenAI-compatible / function oracles, injection-delimited prompts
 kadi/server.py      hardened HTTP API, Divan dashboard, Prometheus
 kadi/config.py      kadi.toml loader (secrets only via environment variables)
-kadi/cli.py         init · serve · replay · dashboard · stats · verify · anchor · prune
+kadi/mcp.py         MCP server on stdio (dual-era: initialize + 2026-07-28), agent-as-oracle
+kadi/cli.py         init · serve · mcp · replay · dashboard · stats · verify · anchor · prune
 kadi/store.py       SQLite ledger (WAL) with schema migrations
 clients/typescript  typed client with retries and backoff
 benchmarks/         Banking77 + CLINC150 benchmark (SHA-256-pinned data, baselines, real-oracle mode)
@@ -294,7 +303,7 @@ Kadı v0.4 is feature-complete for single-instance use. What has and has not bee
 |---|---|
 | Calibration (conformal, Mondrian, LTT) | ✅ unit and simulation tests; bound held in 126/126 public-benchmark runs |
 | Reflex (n-gram, embeddings + k-NN) | ✅ benchmarked on Banking77 and CLINC150 |
-| Service, security controls, ledger | ✅ 77 tests, including an adversarial-review regression suite; CI on Python 3.11–3.13 + Docker |
+| Service, security controls, ledger, MCP | ✅ 87 tests, including an adversarial-review regression suite and an MCP stdio end-to-end test; CI on Python 3.11–3.13 + Docker |
 | **Real LLM oracle** | ⚠️ `AnthropicOracle` / `OpenAICompatibleOracle` are implemented, but benchmarks used **gold labels** as the oracle. A real-oracle run (`benchmarks/run.py --oracle anthropic`) is the first thing to do with an API key |
 | **Turkish data** | ⚠️ the multilingual model supports Turkish, but no Turkish benchmark has been run yet |
 | Scale-out | ⚠️ single process + SQLite; multi-instance deployments need the Postgres backend on the roadmap |
@@ -307,7 +316,7 @@ Kadı v0.4 is feature-complete for single-instance use. What has and has not bee
 - Postgres ledger and shared state for multi-instance deployments
 - Multi-oracle juries: escalate to a second model when oracles disagree
 - Budget-aware α (spend caps per question per day); conformal risk control for asymmetric costs
-- MCP server so agents can call Kadı as a tool; PyPI release; OpenTelemetry traces
+- Streamable-HTTP transport for the MCP server; PyPI release; OpenTelemetry traces
 
 ## Citing
 

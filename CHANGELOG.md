@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-10-10
+
+### Added
+- **MCP server** (`kadi mcp`): stdio, zero dependencies, dual-era (legacy `initialize` 2024-11-05 … 2025-11-25 and modern 2026-07-28 with `server/discover` and per-request `_meta`). Eight tools: `kadi_define_question`, `kadi_list_questions`, `kadi_decide`, `kadi_resolve`, `kadi_teach`, `kadi_stats`, `kadi_recent_decisions`, `kadi_verify_ledger`.
+- **Agent-as-oracle**: when Kadı may not decide alone, it returns a ticket. The calling model judges the case and answers with `kadi_resolve`, and that verdict trains and calibrates Kadı. Audit tickets are blind (all options, no hint). No API key is required.
+- Engine: `Kadi.decide_or_defer()` / `Kadi.resolve()` two-phase API and the `Pending` type. `decide()` is refactored onto the same route → complete path with no behaviour change.
+- `docs/MCP.md`; threat-model entries T17–T18; `tests/test_mcp.py` (protocol negotiation, errors, learning loop, persistence, stdio end-to-end).
+
 ## [0.4.1] — 2026-10-10
 
 Patch release: documentation and API metadata only. No change to calibration, decisions or stored data.

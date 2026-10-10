@@ -7,7 +7,7 @@
 Rutin kararları yerelde verir. Bu kararların oracle ile ne sıklıkla ayrıştığına dağılımdan bağımsız bir üst sınır koyar.<br>
 Geri kalan her şeyi oracle'a yükseltir ve her yükseltmeden öğrenir.
 
-[English](README.md) · [Teori](docs/THEORY.md) · [Tehdit modeli](docs/THREAT_MODEL.md)
+[English](README.md) · [Teori](docs/THEORY.md) · [Tehdit modeli](docs/THREAT_MODEL.md) · [MCP sunucusu](docs/MCP.md)
 
 </div>
 
@@ -111,6 +111,14 @@ karar = kadi.decide(alan, dilekce_metni)
 karar.label, karar.tier, karar.reason      # 'is', 'reflex', 'confident'
 ```
 
+### Ajanlar için MCP aracı olarak: API anahtarı gerekmez
+
+```bash
+claude mcp add kadi -- kadi mcp          # Claude Code; Claude Desktop için docs/MCP.md
+```
+
+Çağıran ajan **oracle'ın kendisidir**. `kadi_decide` ya bir etiket ya da bir bilet döndürür. Ajan biletli vakaları kendisi değerlendirir ve kararını `kadi_resolve` ile bildirir. Kadı bu kararlardan öğrenir; hata hedefini sertifikalayabildiği noktadan sonra rutin vakaları ajana sormayı bırakır. Garanti bu durumda ajanın kendi yargısına göredir. Ayrıntılı rehber: [docs/MCP.md](docs/MCP.md).
+
 ### Servis olarak, her dilden
 
 ```bash
@@ -193,7 +201,7 @@ Kadı v0.4, tek sunuculu kullanım için özellik açısından tamamdır. Neyin 
 |---|---|
 | Kalibrasyon (conformal, Mondrian, LTT) | ✅ birim ve simülasyon testleri; açık benchmark'ta garanti 126/126 koşuda tuttu |
 | Refleks (n-gram, embedding + k-NN) | ✅ Banking77 ve CLINC150 üzerinde ölçüldü |
-| Servis, güvenlik, defter | ✅ 77 test; CI'da Python 3.11–3.13 ve Docker |
+| Servis, güvenlik, defter, MCP | ✅ 87 test (MCP için stdio uçtan uca testi dahil); CI'da Python 3.11–3.13 ve Docker |
 | **Gerçek LLM oracle** | ⚠️ kod hazır, ama benchmark'larda oracle olarak **gerçek etiketler** kullanıldı. API anahtarıyla yapılacak ilk iş: `benchmarks/run.py --oracle anthropic` |
 | **Türkçe veri** | ⚠️ çok dilli model Türkçeyi destekliyor, ama Türkçe benchmark henüz koşulmadı |
 | Ölçeklenme | ⚠️ tek süreç ve SQLite; çoklu sunucu için Postgres desteği yol haritasında |
