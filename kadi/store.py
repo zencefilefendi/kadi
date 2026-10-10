@@ -1,6 +1,8 @@
 """SQLite ledger: every decision is auditable, every model state is durable."""
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import secrets
 import sqlite3
@@ -25,7 +27,9 @@ CREATE TABLE IF NOT EXISTS decisions (
   agreed INTEGER,
   flagged INTEGER NOT NULL DEFAULT 0,
   cost REAL NOT NULL DEFAULT 0,
-  latency_ms REAL NOT NULL DEFAULT 0
+  latency_ms REAL NOT NULL DEFAULT 0,
+  prev_hash TEXT,               -- tamper-evident chain: HMAC of the previous row
+  row_hash TEXT                 -- HMAC(key, prev_hash | canonical row)
 );
 CREATE INDEX IF NOT EXISTS ix_dec_q ON decisions(question, id);
 CREATE INDEX IF NOT EXISTS ix_dec_ts ON decisions(ts);
@@ -39,7 +43,24 @@ CREATE TABLE IF NOT EXISTS alerts (
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
-_ADDED_COLUMNS = {"reason": "TEXT", "shadow_label": "TEXT", "flagged": "INTEGER NOT NULL DEFAULT 0"}
+_ADDED_COLUMNS = {"reason": "TEXT", "shadow_label": "TEXT", "flagged": "INTEGER NOT NULL DEFAULT 0",
+                  "prev_hash": "TEXT", "row_hash": "TEXT"}
+
+# Columns covered by the hash chain, in canonical order.
+CHAINED = ("ts", "question", "input_hash", "preview", "label", "tier", "reason", "confidence", "set_size",
+           "oracle_label", "shadow_label", "audited", "agreed", "flagged", "cost", "latency_ms")
+GENESIS = "0" * 64
+_REAL = ("ts", "confidence", "cost", "latency_ms")
+_INT = ("set_size", "audited", "agreed", "flagged")
+
+
+def derive_chain_key(secret: bytes) -> bytes:
+    return hashlib.sha256(b"kadi-ledger-chain|" + secret).digest()
+
+
+def _row_hash(key: bytes, prev: str, row: dict) -> str:
+    canon = json.dumps([row[c] for c in CHAINED], ensure_ascii=False, separators=(",", ":"))
+    return hmac.new(key, (prev + "|" + canon).encode(), hashlib.sha256).hexdigest()
 
 
 class Store:
@@ -53,6 +74,8 @@ class Store:
         self.db.execute("PRAGMA synchronous=NORMAL")
         self.db.execute("PRAGMA busy_timeout=5000")
         self._migrate()
+        self.chain_key: bytes | None = None   # set by the engine; enables the hash chain
+        self._head: str | None = None
 
     def _migrate(self) -> None:
         cols = {r[1] for r in self.db.execute("PRAGMA table_info(decisions)")}
@@ -75,16 +98,60 @@ class Store:
 
     # -------------------------------------------------------- decisions
     def record(self, **row) -> int:
-        cols = ",".join(row)
-        qs = ",".join("?" * len(row))
+        missing = [c for c in CHAINED if c not in row]
+        if missing:
+            raise ValueError(f"record() missing columns {missing}")
+        for c in _REAL:  # canonical types: what SQLite hands back on read
+            row[c] = None if row[c] is None else float(row[c])
+        for c in _INT:
+            row[c] = None if row[c] is None else int(row[c])
         with self.lock:
+            if self.chain_key is not None:
+                prev = self._chain_head()
+                row["prev_hash"] = prev
+                row["row_hash"] = self._head = _row_hash(self.chain_key, prev, row)
+            cols = ",".join(row)
+            qs = ",".join("?" * len(row))
             cur = self.db.execute(f"INSERT INTO decisions ({cols}) VALUES ({qs})", tuple(row.values()))
             return cur.lastrowid
 
+    def _chain_head(self) -> str:
+        if self._head is None:
+            r = self.db.execute("SELECT row_hash FROM decisions WHERE row_hash IS NOT NULL "
+                                "ORDER BY id DESC LIMIT 1").fetchone()
+            a = self.db.execute("SELECT value FROM meta WHERE key='chain_anchor'").fetchone()
+            self._head = r["row_hash"] if r else (a["value"] if a else GENESIS)
+        return self._head
+
     def prune(self, older_than_days: float) -> int:
+        """Delete old rows. The hash of the last deleted chained row becomes the
+        anchor the first surviving row must link to, so pruning stays verifiable."""
         cutoff = time.time() - older_than_days * 86400
         with self.lock:
+            last = self.db.execute("SELECT row_hash FROM decisions WHERE ts < ? AND row_hash IS NOT NULL "
+                                   "ORDER BY id DESC LIMIT 1", (cutoff,)).fetchone()
+            if last:
+                self.db.execute("INSERT OR REPLACE INTO meta VALUES ('chain_anchor', ?)", (last["row_hash"],))
             return self.db.execute("DELETE FROM decisions WHERE ts < ?", (cutoff,)).rowcount
+
+    def verify(self, key: bytes) -> dict:
+        """Re-derive the whole chain. Detects edited, deleted, inserted or
+        re-ordered rows, as long as the attacker does not hold the key."""
+        with self.lock:
+            a = self.db.execute("SELECT value FROM meta WHERE key='chain_anchor'").fetchone()
+            prev = a["value"] if a else GENESIS
+            cols = ", ".join(("id", "prev_hash", "row_hash") + CHAINED)
+            n = 0
+            for r in self.db.execute(f"SELECT {cols} FROM decisions WHERE row_hash IS NOT NULL ORDER BY id"):
+                r = dict(r)
+                if r["prev_hash"] != prev:
+                    return {"ok": False, "rows": n, "first_bad_id": r["id"],
+                            "reason": "broken link: a row before this one was deleted, inserted or altered"}
+                if not hmac.compare_digest(_row_hash(key, prev, r), r["row_hash"]):
+                    return {"ok": False, "rows": n, "first_bad_id": r["id"], "reason": "row content was altered"}
+                prev = r["row_hash"]
+                n += 1
+            return {"ok": True, "rows": n, "head": prev}
 
     # ----------------------------------------------------------- models
     def save_model(self, question: str, spec: dict, state: dict) -> None:

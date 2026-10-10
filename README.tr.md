@@ -45,6 +45,13 @@ $$
 
 Bir ayrışma ancak yerel cevapta mümkündür, yerel cevap da ancak C(x) = {ŷ} olduğunda verilir. Tam ifade, varsayımlar, Mondrian varyantı, ACI sınırı ve **neyin garanti edilmediği** [docs/THEORY.md](docs/THEORY.md) belgesindedir.
 
+### İki politika
+
+| `policy` | Yerel cevap koşulu | Garanti | En uygun olduğu yer |
+|---|---|---|---|
+| `"conformal"` (varsayılan) | conformal küme tek etiketli | Ayrışma ≤ α, **ortalamada**; ACI kaymaya uyum sağlar; istenirse **etiket başına** | nadir ama kritik etiketler, değişken trafik |
+| `"ltt"` | max p ≥ λ̂; λ̂ **Learn then Test** ile sertifikalı | **≥ 1 − δ olasılıkla** ayrışma ≤ α | çok etiketli sorular; aynı α'da en çok yerel karar |
+
 ## Neden basit bir güven eşiği değil?
 
 | | Güven eşiği / hazır yönlendirici | Kadı |
@@ -114,6 +121,25 @@ kadi serve --config kadi.toml               # ya da: docker compose up -d
 
 Next.js projeleri için tipli TypeScript istemcisi [clients/typescript](clients/typescript) klasöründedir. HTTP uç noktalarının tam listesi [İngilizce README](README.md#usage) içindedir.
 
+## Açık benchmark sonuçları
+
+`benchmarks/run.py`, **Banking77** (13.083 sorgu, 77 niyet) ve **CLINC150** (22.500 sorgu, 150 niyet) veri setlerini tohumlu rastgele sırayla taze bir Kadı örneğinden geçirir. Oracle rolünü gerçek etiket oynar, yani *hata* hem oracle ile ayrışma hem de gerçek doğruya göre hatadır. Değerler 3 tohumun ortalamasıdır; ayrıntılı tablolar [benchmarks/results/RESULTS-labels.md](benchmarks/results/RESULTS-labels.md) dosyasında.
+
+| | Banking77 yerel / hata | CLINC150 yerel / hata | Hata kontrol altında mı? |
+|---|---|---|---|
+| eşik τ = 0,5 (saf yönlendirici) | %85,9 / **%18,80** | %87,2 / **%10,41** | hayır |
+| eşik τ = 0,9 (elle ayarlı) | %65,4 / %2,89 | %73,5 / %1,47 | hayır |
+| Kadı conformal, α = %5 | %54,7 / %1,28 | %74,7 / %2,16 | ✅ ortalamada |
+| **Kadı LTT, α = %5** | **%63,9 / %2,47** | **%79,5 / %3,19** | ✅ %95 olasılıkla |
+| **Kadı LTT, α = %10** | **%74,4 / %6,09** | **%85,4 / %6,94** | ✅ %95 olasılıkla |
+
+**Sonuçlar ne söylüyor:**
+
+- **Garanti, 54 koşunun tamamında tuttu** (2 veri seti × 3 politika × 3 α × 3 tohum); yalnızca ortalamada değil, her tohumda ayrı ayrı.
+- **LTT, her α değerinde conformal'dan 3,5–9 puan daha fazla kararı yerelde verdi.**
+- **İyi seçilmiş sabit bir eşik rekabetçi olabilir, ama bu ancak doğru eşiği önceden biliyorsanız işe yarar.** Doğru eşik veri setine göre değişir ve garanti taşımaz; τ = 0,5 seçilirse hata sessizce %10–19'a çıkar. Kadı bu çalışma noktasını otomatik olarak ve sertifikayla seçer.
+- **Etiket başına garanti, çok etiketli sorularda ölçeklenmez.** Az etiketli ve nadir etiketin kritik olduğu sorularda kullanın.
+
 ## Değerlendirme (sentetik, tekrarlanabilir)
 
 Demoda simüle oracle %2 gürültülüdür ve çağrı başına $0.012 tutar. Akışın %30–33'ünde bir oracle kesintisi, %50'sinde bir kelime kayması vardır. 6.000 talep, 2 soru, α = %5:
@@ -135,6 +161,7 @@ Bağımsız bir saldırgan gözüyle yapılan inceleme 11 sorun buldu. Hepsi dü
 | Sertleştirme | katı CSP, root olmayan ve salt okunur konteyner |
 | Gizlilik | TC kimlik, IBAN, kart, telefon, e-posta ve anahtar maskeleme (kayıtta ve isteğe bağlı olarak oracle'a giderken), anahtarlı HMAC, saklama süresi |
 | Bütünlük | şemaya kilitli çıktı, prompt injection ayraçları, yenilik koruması, sapma kesicisi |
+| Denetlenebilirlik | **kurcalanamaz defter**: her karar bir öncekine HMAC ile zincirlenir; `kadi verify` değiştirilmiş, silinmiş ya da araya eklenmiş satırı bulur; `kadi anchor` zincir başını dışarıda saklamak için verir |
 
 ## Lisans
 

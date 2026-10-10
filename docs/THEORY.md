@@ -63,6 +63,32 @@ $$
 
 The bound is **marginal**: it holds over the stream, not for each input separately. It is also typically conservative, because errors inside escalated decisions are zero.
 
+## 3b. Learn then Test: a high-probability guarantee (`policy = "ltt"`)
+
+Theorem 1 holds *in expectation over the calibration draw*: in an unlucky draw, the realised error rate of a deployed threshold can exceed α. Learn then Test (Angelopoulos, Bates, Candès, Jordan & Lei 2021) replaces it with a PAC-style statement and, for selective classification, uses a less conservative decision rule.
+
+**Decision rule.** Answer locally iff $\max_y \hat{p}(y\mid x) \ge \lambda$. The answer is the argmax.
+
+**Loss.** For a calibration pair, $L_i(\lambda) = \mathbf{1}\{\max_y \hat{p}(y\mid x_i) \ge \lambda \;\wedge\; \arg\max_y \hat{p}(y\mid x_i) \ne y_i\}$. This is "answered locally, and wrongly"; escalations cost 0. Its mean $R(\lambda) = \mathbb{E}[L(\lambda)]$ is exactly the probability that a returned decision disagrees with the oracle.
+
+**Test.** For each $\lambda$ on a grid fixed in advance (`LTT_GRID`, ordered from strict to loose), test $H_0(\lambda): R(\lambda) > \alpha$ with the exact binomial p-value
+
+$$
+p(\lambda) = \Pr\Big(\mathrm{Bin}(n, \alpha) \le \textstyle\sum_i L_i(\lambda)\Big).
+$$
+
+Under $H_0$ the count is stochastically larger than $\mathrm{Bin}(n,\alpha)$, so the p-value is valid. Fixed-sequence testing rejects while $p(\lambda) \le \delta$ and stops at the first non-rejection; $\hat{\lambda}$ is the loosest rejected threshold. If none is rejected, the court stays uncalibrated and escalates.
+
+**Theorem 2 (Angelopoulos et al. 2021).** With i.i.d. calibration data and $\hat{p}$ independent of it,
+
+$$
+\Pr_{\text{calibration}}\Big(R(\hat{\lambda}) \le \alpha\Big) \ge 1 - \delta .
+$$
+
+Fixed-sequence testing controls the family-wise error rate at δ, and an error-free certificate needs $n \ge \lceil \log\delta / \log(1-\alpha) \rceil$ samples (59 for α = δ = 0.05; 299 for α = 0.01). The validity of the certificate is checked by simulation in `tests/test_core.py::test_ltt_certificate_is_valid`.
+
+**Conformal or LTT?** The conformal rule demands a *singleton set*, which with many labels is a much stronger requirement than "top label is confident". LTT tests the decision risk directly and so typically answers more locally at the same α (see `benchmarks/`). Conformal keeps two advantages: per-label (Mondrian) guarantees and ACI adaptivity. Under LTT, drift is handled by re-certification on the rolling, re-scored window and by the drift breaker.
+
 ## 4. Class-conditional (Mondrian) guarantee
 
 With `conditional=True`, Kadı keeps one calibrator per label $y$, using only the calibration examples whose oracle label is $y$. Label $y$ is included in $C(x)$ iff $s(x,y) \le \hat{q}_y$. Under exchangeability *within each label* (Vovk 2012):
@@ -149,11 +175,17 @@ the court goes on **probation**: every live decision is escalated for the next $
 
 Realised miscoverage is measured on calibration samples, so it includes the drift window. In `route_ticket` it overshoots α by about 1 point, and ACI responds by tightening α<sub>t</sub> to 3.8%; this is the finite-sample behaviour the ACI bound describes. The decision-level disagreement (1 − audited agreement) is lower than the set miscoverage, as Corollary 1 predicts. The data are synthetic and lexically easy. Measure your own traffic with `kadi replay` and shadow mode before drawing conclusions.
 
+## 10. Public benchmarks
+
+On Banking77 and CLINC150, with gold labels as the oracle, 3 seeds and the full datasets, the empirical risk stayed below α in all 54 runs (18 configurations × 3 seeds, checked per seed). LTT kept more decisions local than conformal at every α. For example, at α = 5% Banking77 gave 63.9% vs. 54.7% and CLINC150 gave 79.5% vs. 74.7%. Mondrian calibration with 77–150 labels rarely becomes certifiable, as expected from §4. See [benchmarks/results/RESULTS-labels.md](../benchmarks/results/RESULTS-labels.md).
+
 ## References
 
+- Angelopoulos, A. N., Bates, S., Candès, E. J., Jordan, M. I., & Lei, L. (2021). *Learn then Test: Calibrating Predictive Algorithms to Achieve Risk Control.* arXiv:2110.01052.
 - Angelopoulos, A. N., & Bates, S. (2021). *A Gentle Introduction to Conformal Prediction and Distribution-Free Uncertainty Quantification.* arXiv:2107.07511.
 - Chen, L., Zaharia, M., & Zou, J. (2023). *FrugalGPT: How to Use Large Language Models While Reducing Cost and Improving Performance.* arXiv:2305.05176.
 - Duchi, J., Hazan, E., & Singer, Y. (2011). Adaptive Subgradient Methods for Online Learning and Stochastic Optimization. *JMLR* 12.
+- Geifman, Y., & El-Yaniv, R. (2017). Selective Classification for Deep Neural Networks. *NeurIPS*.
 - Gibbs, I., & Candès, E. (2021). Adaptive Conformal Inference Under Distribution Shift. *NeurIPS*. arXiv:2106.00170.
 - Greshake, K., et al. (2023). *Not what you've signed up for: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection.* arXiv:2302.12173.
 - Hendrycks, D., & Gimpel, K. (2017). A Baseline for Detecting Misclassified and Out-of-Distribution Examples in Neural Networks. *ICLR*.

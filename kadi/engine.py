@@ -36,15 +36,16 @@ from collections import OrderedDict, deque
 from dataclasses import asdict, dataclass
 from typing import Callable
 
-from .conformal import AdaptiveConformal, MondrianConformal, conformal_from_state
+from .conformal import AdaptiveConformal, LearnThenTest, MondrianConformal, conformal_from_state
 from .features import HashingFeaturizer, normalize
 from .learner import OnlineSoftmax
 from .oracles import Oracle, OracleError, Verdict
 from .questions import Question
-from .store import Store
+from .store import Store, derive_chain_key
 
 MAX_INPUT_CHARS = 32_000
-RESCORE_EVERY = 25          # re-score calibration set after this many training updates
+RESCORE_EVERY = 25          # re-score calibration set after this many training updates...
+RESCORE_BUDGET = 0.10       # ...but spend at most ~10% of wall time re-scoring
 WARMUP_HOLDOUT = 0.25       # share of warm-up oracle labels held out for calibration
 SHADOW_HOLDOUT = 0.20       # same, in shadow mode (every decision has an oracle label)
 TIERS = ("memory", "reflex", "oracle", "fallback")
@@ -71,7 +72,8 @@ class _Brain:
     def __init__(self, q: Question, memory_size: int):
         self.q = q
         self.model = OnlineSoftmax(len(q.options))
-        self.conformal = (MondrianConformal(len(q.options), q.target_error) if q.conditional
+        self.conformal = (LearnThenTest(q.target_error, q.delta) if q.policy == "ltt"
+                          else MondrianConformal(len(q.options), q.target_error) if q.conditional
                           else AdaptiveConformal(q.target_error))
         self.memory: OrderedDict[str, str] = OrderedDict()
         self.memory_size = memory_size
@@ -86,7 +88,9 @@ class _Brain:
         self.probation = 0
         self.last_alert = 0.0
         self.dirty = 0
-        self.updates_since_rescore = 0
+        self.updates_since_rescore = RESCORE_EVERY   # force a first rescore (e.g. after a reload)
+        self.last_rescore = 0.0
+        self.rescore_cost = 0.0
         self.last_save = time.time()
         self.last_stats = 0.0
 
@@ -111,8 +115,12 @@ class _Brain:
         self.dirty += 1
 
     def refresh(self) -> None:
-        if self.conformal.stale or self.updates_since_rescore >= RESCORE_EVERY:
+        now = time.perf_counter()
+        if (self.updates_since_rescore >= RESCORE_EVERY
+                and now - self.last_rescore >= self.rescore_cost / RESCORE_BUDGET):
             self.conformal.rescore(self.model.predict_proba)
+            self.last_rescore = time.perf_counter()
+            self.rescore_cost = self.last_rescore - now
             self.updates_since_rescore = 0
 
     def avg_oracle_cost(self) -> float:
@@ -132,7 +140,9 @@ class _Brain:
         rate, lower, nchk = self.drift()
         return {
             "question": self.q.name, "options": list(self.q.options), "kind": self.q.meta.get("kind"),
-            "mode": self.q.mode, "conditional": self.q.conditional,
+            "mode": self.q.mode, "conditional": self.q.conditional, "policy": self.q.policy,
+            "calibrator": {k: v for k, v in c.info().items() if v is None or isinstance(v, (int, float))
+                           and math.isfinite(v)},
             "target_error": self.q.target_error, "alpha_t": round(c.alpha_t, 5),
             "calibration_size": c.calibration_size, "calibrated": c.calibrated,
             "realized_miscoverage": (c.misses / c.observed) if c.observed else None,
@@ -177,6 +187,7 @@ class Kadi:
                           "as the hashes, so a copy of the DB allows guessing inputs. Set KADI_SECRET.",
                           stacklevel=2)
         self.secret = (secret.encode() if isinstance(secret, str) else secret) or self.store.secret()
+        self.store.chain_key = derive_chain_key(self.secret)
         self.on_oracle_error = on_oracle_error
         self.memory_size = memory_size
         self.checkpoint_seconds = checkpoint_seconds
@@ -406,7 +417,8 @@ class Kadi:
             b = _Brain(q, self.memory_size)
             saved = self.store.load_model(q.name)
             if saved and tuple(saved[0]["options"]) == q.options \
-                    and saved[0].get("conditional", False) == q.conditional:
+                    and saved[0].get("conditional", False) == q.conditional \
+                    and saved[0].get("policy", "conformal") == q.policy:
                 st = saved[1]
                 b.model = OnlineSoftmax.from_state(st["model"])
                 b.conformal = conformal_from_state(st["conformal"])
@@ -431,7 +443,7 @@ class Kadi:
         q = b.q
         self.store.save_model(q.name, {"options": list(q.options), "instructions": q.instructions,
                                        "target_error": q.target_error, "mode": q.mode,
-                                       "conditional": q.conditional}, state)
+                                       "conditional": q.conditional, "policy": q.policy}, state)
         self.store.save_qstats(q.name, b.stats())
         b.dirty = 0
         b.last_save = b.last_stats = time.time()

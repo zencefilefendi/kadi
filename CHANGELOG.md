@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-10-10
+
+### Added
+- **Learn then Test policy** (`policy = "ltt"`): selective classification with a high-probability guarantee, meaning decision risk ≤ α with probability ≥ 1 − δ over the calibration sample. It uses exact binomial p-values with fixed-sequence testing on a pre-registered grid, and its validity is checked by simulation.
+- **Tamper-evident ledger**: each decision row is HMAC-chained to the previous one. `kadi verify` detects edited, deleted or inserted rows, and `kadi anchor` exports the chain head. Pruning stays verifiable through an anchor.
+- **Public benchmark** (`benchmarks/`): Banking77 and CLINC150, with dataset files pinned by SHA-256, multi-seed runs in parallel, confidence-threshold baselines, and an optional real Claude oracle.
+- `kadi replay --policy ltt --audit-rate`; the dashboard shows the LTT threshold λ and a policy badge.
+
+### Changed
+- The reflex learner's inner loops are about 3–5× faster. Calibration scores are kept incrementally, and full re-scoring is time-budgeted (≤ ~10% of wall time), which matters with 100+ labels.
+
 ## [0.2.0] — 2026-10-10
 
 ### Added

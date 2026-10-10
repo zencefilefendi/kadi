@@ -31,7 +31,8 @@
     instructions = "Which team should handle this support ticket?"
     target_error = 0.03
     mode = "shadow"
-    conditional = false
+    policy = "ltt"             # "conformal" (expected bound) or "ltt" (holds with prob 1 - delta)
+    delta = 0.05
 """
 from __future__ import annotations
 
@@ -92,6 +93,7 @@ def load(path: str) -> Config:
                      target_error=float(qd.get("target_error", 0.05)), mode=qd.get("mode", "live"),
                      conditional=bool(qd.get("conditional", False)),
                      novelty_threshold=float(qd.get("novelty_threshold", 0.8)),
+                     policy=qd.get("policy", "conformal"), delta=float(qd.get("delta", 0.05)),
                      meta={"kind": qd.get("kind", "choice")})
         if q.name in names:
             raise ValueError(f"duplicate question {q.name!r}")

@@ -21,11 +21,11 @@ class OnlineSoftmax:
 
     def predict_proba(self, x: dict[int, float]) -> list[float]:
         z = list(self.b)
+        w = self.w
         for f, v in x.items():
-            row = self.w.get(f)
+            row = w.get(f)
             if row is not None:
-                for c in range(self.k):
-                    z[c] += row[c] * v
+                z = [a + r * v for a, r in zip(z, row)]
         m = max(z)
         e = [math.exp(t - m) for t in z]
         s = sum(e)
@@ -42,13 +42,14 @@ class OnlineSoftmax:
         for c in range(self.k):
             self.gb[c] += grad[c] ** 2
             self.b[c] -= self.lr * grad[c] / math.sqrt(self.gb[c])
+        lr, l2, k, sqrt = self.lr, self.l2, self.k, math.sqrt
         for f, v in x.items():
-            row = self.w.setdefault(f, [0.0] * self.k)
-            acc = self.g.setdefault(f, [1e-8] * self.k)
-            for c in range(self.k):
-                gc = grad[c] * v + self.l2 * row[c]
-                acc[c] += gc * gc
-                row[c] -= self.lr * gc / math.sqrt(acc[c])
+            row = self.w.get(f) or [0.0] * k
+            acc = self.g.get(f) or [1e-8] * k
+            g = [gc * v + l2 * r for gc, r in zip(grad, row)]
+            acc = [a + gi * gi for a, gi in zip(acc, g)]
+            self.w[f] = [r - lr * gi / sqrt(a) for r, gi, a in zip(row, g, acc)]
+            self.g[f] = acc
         self.seen += 1
 
     def state(self) -> dict:

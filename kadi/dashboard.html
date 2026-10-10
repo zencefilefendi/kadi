@@ -163,7 +163,7 @@ tr:last-child td { border-bottom: 0; }
       <h2>Courts</h2>
       <div class="sub">One court per decision type. Each keeps its own model and its own error guarantee.</div>
       <div class="tablewrap"><table>
-        <thead><tr><th>Question</th><th>Mix (recent 500)</th><th>Local</th><th>Why escalated</th><th>Target α</th><th>Live α<sub>t</sub></th><th>Miscoverage</th><th>Audit agreement</th><th>Trained on</th><th>Status</th></tr></thead>
+        <thead><tr><th>Question</th><th>Mix (recent 500)</th><th>Local</th><th>Why escalated</th><th>Target α</th><th title="conformal: live ACI level α_t · LTT: certified confidence threshold λ">Live α<sub>t</sub> / λ</th><th>Miscoverage</th><th>Audit agreement</th><th>Trained on</th><th>Status</th></tr></thead>
         <tbody id="courts"><tr><td colspan="10" class="empty">No decisions yet</td></tr></tbody>
       </table></div>
     </div>
@@ -341,14 +341,16 @@ function drawSummary() {
       .map(([k, v]) => `${esc(k)} <span class="num">${v}</span>`).join(" · ") || "—";
     const sh = q.mode === "shadow" && q.shadow && q.shadow.n
       ? `<div class="why">would decide ${pct(q.shadow.would_be_local, 0)} locally · ${pct(q.shadow.agreement)} agree</div>` : "";
-    return `<tr><td><b>${esc(q.question)}</b><span class="mode ${esc(q.mode)}">${esc(q.mode || "live")}</span>${q.conditional ? '<span class="mode">per-label</span>' : ""}
+    return `<tr><td><b>${esc(q.question)}</b><span class="mode ${esc(q.mode)}">${esc(q.mode || "live")}</span>${q.conditional ? '<span class="mode">per-label</span>' : ""}${q.policy === "ltt" ? '<span class="mode" title="Learn then Test: risk ≤ α with probability ≥ 1 − δ">LTT</span>' : ""}
       <div class="sub">${esc((q.options || []).join(" · "))}</div>${sh}</td>
       <td><div class="mix" title="memory ${q.memory} · reflex ${q.reflex} · oracle ${q.oracle} · fallback ${q.fallback || 0}">
         <span style="width:${100*q.memory/tot}%;background:var(--memory)"></span>
         <span style="width:${100*q.reflex/tot}%;background:var(--reflex)"></span>
         <span style="width:${100*q.oracle/tot}%;background:var(--oracle)"></span>
         <span style="width:${100*(q.fallback || 0)/tot}%;background:var(--fallback)"></span></div></td>
-      <td class="num">${pct(lr)}</td><td class="why">${esc_}</td><td class="num">${pct(q.target_error, 1)}</td><td class="num">${pct(q.alpha_t, 2)}</td>
+      <td class="num">${pct(lr)}</td><td class="why">${esc_}</td><td class="num">${pct(q.target_error, 1)}</td><td class="num">${q.policy === "ltt"
+        ? (q.calibrator && q.calibrator.lambda != null ? "λ " + q.calibrator.lambda.toFixed(4) : "λ —")
+        : pct(q.alpha_t, 2)}</td>
       <td class="num">${pct(q.realized_miscoverage, 2)}</td>
       <td class="num">${q.audits ? pct(q.audit_agreement) + ` <span class="sub">(${q.audits})</span>` : "—"}</td>
       <td class="num">${fmtN(q.trained_on || 0)}</td><td>${st}</td></tr>`;

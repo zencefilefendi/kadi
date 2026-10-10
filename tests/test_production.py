@@ -120,6 +120,32 @@ class TestGuarantee(unittest.TestCase):
         self.assertLessEqual(err, 0.05 * 1.3)
         self.assertGreater(st["local_rate_recent"], 0.5)
 
+    def test_ltt_bound_and_local_rate(self):
+        err_ltt, st_ltt = self.run_stream_policy("ltt")
+        self.assertLessEqual(err_ltt, 0.05 * 1.3)
+        self.assertGreater(st_ltt["local_rate_recent"], 0.5)
+        self.assertIsNotNone(st_ltt["calibrator"]["lambda"])
+
+    def run_stream_policy(self, policy):
+        rng = random.Random(5)
+        words = {"yes": ["asap", "production down", "urgent", "right now", "all users affected"],
+                 "no": ["when you can", "minor thing", "no rush", "small question", "just curious"]}
+        filler = ["hi", "thanks", "team", "please", "today", "again", "app", "login", "invoice", "export"]
+        truth = {}
+        k = Kadi(FunctionOracle(lambda q, t, c: truth[t]), db=":memory:", seed=3)
+        q = Binary("urgent", "?", target_error=0.05, policy=policy)
+        disagree = 0
+        for i in range(3000):
+            y = "yes" if rng.random() < 0.15 else "no"
+            t = " ".join(rng.sample(filler, 3) + [rng.choice(words[y])]) + f" #{i}"
+            if rng.random() < 0.04:
+                t += " " + rng.choice(words["no" if y == "yes" else "yes"])
+            truth[t] = y
+            disagree += k.decide(q, t).label != y
+        st = k.stats()[0]
+        k.close()
+        return disagree / 3000, st
+
     def test_mondrian_bound(self):
         err, st = self.run_stream(True)
         self.assertLessEqual(err, 0.05 * 1.3)
@@ -443,3 +469,81 @@ class TestSecurityRegressions(Base):
             rl.allow(f"ip{i}")
         self.assertLess(time.perf_counter() - t0, 3.0)
         self.assertLessEqual(len(rl.buckets), 25_000)
+
+
+class TestLedger(Base):
+    def _ledger(self):
+        k = Kadi(self.oracle, db=self.db, audit_rate=0, secret=b"s3cret")
+        q = Choice("l", ["pos", "neg"])
+        for text, y in stream(30):
+            self.truth[text] = y
+            k.decide(q, text)
+        return k
+
+    def test_chain_verifies_and_survives_restart_and_prune(self):
+        from kadi.store import derive_chain_key
+        k = self._ledger()
+        key = derive_chain_key(b"s3cret")
+        self.assertEqual(k.store.verify(key), {"ok": True, "rows": 30, "head": k.store._head})
+        k.close()
+        k2 = Kadi(self.oracle, db=self.db, audit_rate=0, secret=b"s3cret")
+        self.truth["after restart"] = "pos"
+        k2.decide(Choice("l", ["pos", "neg"]), "after restart")
+        self.assertTrue(k2.store.verify(key)["ok"])
+        k2.store.db.execute("UPDATE decisions SET ts = ts - 86400 * 10 WHERE id <= 10")  # age, then
+        # re-sign those rows as if they had always been old (simulates real elapsed time)
+        k2.store._head = None
+        rows = k2.store.query("SELECT * FROM decisions ORDER BY id")
+        from kadi.store import _row_hash, GENESIS
+        prev = GENESIS
+        for r in rows:
+            h = _row_hash(key, prev, r)
+            k2.store.db.execute("UPDATE decisions SET prev_hash=?, row_hash=? WHERE id=?", (prev, h, r["id"]))
+            prev = h
+        self.assertEqual(k2.store.prune(5), 10)
+        self.assertTrue(k2.store.verify(key)["ok"])
+        k2.close()
+
+    def test_tampering_detected(self):
+        from kadi.store import derive_chain_key
+        k = self._ledger()
+        key = derive_chain_key(b"s3cret")
+        k.store.db.execute("UPDATE decisions SET label='neg' WHERE id=7 AND label='pos'")
+        k.store.db.execute("UPDATE decisions SET label='pos' WHERE id=7 AND label='neg' AND tier='zzz'")
+        k.store.db.execute("UPDATE decisions SET cost = cost + 1 WHERE id = 7")
+        r = k.store.verify(key)
+        self.assertFalse(r["ok"])
+        self.assertEqual(r["first_bad_id"], 7)
+        k.close()
+
+    def test_deletion_detected(self):
+        from kadi.store import derive_chain_key
+        k = self._ledger()
+        k.store.db.execute("DELETE FROM decisions WHERE id = 12")
+        r = k.store.verify(derive_chain_key(b"s3cret"))
+        self.assertFalse(r["ok"])
+        self.assertEqual(r["first_bad_id"], 13)
+        self.assertIn("broken link", r["reason"])
+        k.close()
+
+    def test_wrong_key_fails(self):
+        from kadi.store import derive_chain_key
+        k = self._ledger()
+        self.assertFalse(k.store.verify(derive_chain_key(b"other"))["ok"])
+        k.close()
+
+    def test_cli_verify_exit_codes(self):
+        k = self._ledger()
+        k.close()
+        os.environ["KADI_SECRET"] = "s3cret"
+        try:
+            self.assertEqual(cli_main(["verify", "--db", self.db]), 0)
+            self.assertEqual(cli_main(["anchor", "--db", self.db]), 0)
+            import sqlite3 as _s
+            c = _s.connect(self.db)
+            c.execute("DELETE FROM decisions WHERE id = 3")
+            c.commit()
+            c.close()
+            self.assertEqual(cli_main(["verify", "--db", self.db]), 3)
+        finally:
+            del os.environ["KADI_SECRET"]

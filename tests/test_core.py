@@ -43,14 +43,46 @@ class TestPieces(unittest.TestCase):
         for _ in range(4000):
             p = rng.uniform(0.5, 1.0)
             y = 0 if rng.random() < p else 1
-            if c.stale:
-                c.rescore(proba)
             if c.threshold() is not None:
                 total += 1
                 hits += y in c.prediction_set([p, 1 - p])
             c.observe({0: p}, [p, 1 - p], y)
         self.assertGreaterEqual(hits / total, 0.88)
         self.assertLessEqual(hits / total, 0.93)
+
+    def test_binom_cdf_exact(self):
+        from math import comb
+        from kadi.conformal import binom_cdf
+        for n, p in ((10, 0.3), (37, 0.05), (200, 0.01)):
+            for k in (0, 1, 3, n // 2):
+                exact = sum(comb(n, i) * p ** i * (1 - p) ** (n - i) for i in range(k + 1))
+                self.assertAlmostEqual(binom_cdf(k, n, p), exact, places=10)
+
+    def test_ltt_certificate_is_valid(self):
+        """Toy calibrated model: p ~ U(0.5, 1), correct w.p. p, so the true risk at
+        threshold lam is (1 - lam)^2. The certificate may fail at most ~delta of the time."""
+        from kadi.conformal import LearnThenTest
+        rng = random.Random(1)
+        alpha, delta, trials, fails, certified = 0.02, 0.1, 300, 0, 0
+        for _ in range(trials):
+            c = LearnThenTest(alpha, delta, window=500)
+            for _ in range(500):
+                pm = rng.uniform(0.5, 1.0)
+                c.evals.append((pm, rng.random() < pm))
+                c.samples.append(({}, 0))
+            c._certify()
+            if c.lam is not None:
+                certified += 1
+                fails += (1 - c.lam) ** 2 > alpha
+        self.assertGreater(certified, trials * 0.9)
+        self.assertLessEqual(fails / trials, delta + 0.03)
+
+    def test_ltt_needs_enough_samples(self):
+        from kadi.conformal import LearnThenTest
+        c = LearnThenTest(0.01, 0.05)
+        self.assertEqual(c.min_samples, 299)  # (1 - 0.01)^n <= 0.05
+        with self.assertRaises(ValueError):
+            Choice("x", ["a", "b"], policy="ltt", conditional=True)
 
     def test_mondrian_state_roundtrip(self):
         from kadi.conformal import MondrianConformal, conformal_from_state

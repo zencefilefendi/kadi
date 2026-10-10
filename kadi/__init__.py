@@ -12,4 +12,4 @@ from .redact import DEFAULT_REDACTOR, Redactor
 __all__ = ["Kadi", "Decision", "Question", "Choice", "Binary", "Score",
            "AnthropicOracle", "OpenAICompatibleOracle", "FunctionOracle", "OracleError", "Verdict",
            "Redactor", "DEFAULT_REDACTOR"]
-__version__ = "0.2.0"
+__version__ = "0.3.0"

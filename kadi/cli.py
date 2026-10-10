@@ -6,6 +6,8 @@
     kadi dashboard --db kadi.db       read-only dashboard over an existing ledger
     kadi stats --db kadi.db           JSON summary
     kadi prune --db kadi.db --days 30 delete old ledger rows
+    kadi verify --db kadi.db          check the tamper-evident hash chain
+    kadi anchor --db kadi.db          print the chain head for external safekeeping
 """
 from __future__ import annotations
 
@@ -74,16 +76,22 @@ def _read_jsonl(path: str) -> list[dict]:
 
 
 def replay(rows: list[dict], options: tuple[str, ...], alpha: float, cost_per_call: float,
-           conditional: bool = False, redact: bool = True, name: str = "replay") -> dict:
+           conditional: bool = False, redact: bool = True, name: str = "replay",
+           policy: str = "conformal", audit_rate: float = 0.05) -> dict:
     """Run a fresh Kadı over labelled history, in order, with the labels as oracle."""
     from .engine import Kadi
     from .oracles import FunctionOracle
     from .questions import Question
 
-    q = Question(name, options, target_error=alpha, conditional=conditional)
+    q = Question(name, options, target_error=alpha, conditional=conditional, policy=policy)
     current = {"label": None}
-    k = Kadi(FunctionOracle(lambda *_: current["label"], cost_per_call), db=":memory:",
-             audit_rate=0.0, redact=redact, secret=b"replay", store_inputs=False)
+    calls = {"n": 0}
+
+    def oracle(*_):
+        calls["n"] += 1
+        return current["label"]
+    k = Kadi(FunctionOracle(oracle, cost_per_call), db=":memory:",
+             audit_rate=audit_rate, redact=redact, secret=b"replay", store_inputs=False, seed=0)
     n = len(rows)
     local = wrong = local_wrong = 0
     half_local = half_wrong = 0
@@ -101,7 +109,7 @@ def replay(rows: list[dict], options: tuple[str, ...], alpha: float, cost_per_ca
             half_local += is_local
             half_wrong += bad
     k.close()
-    calls = n - local
+    calls = calls["n"]  # includes audit calls
     h = n - n // 2
     return {"alpha": alpha, "n": n, "local_rate": local / n, "error_rate": wrong / n,
             "local_error_rate": (local_wrong / local) if local else 0.0,
@@ -129,12 +137,14 @@ def _cmd_replay(a) -> int:
     else:
         options = tuple(sorted({r["label"] for r in rows}))
     alphas = [float(x) for x in a.alphas.split(",")]
-    results = [replay(rows, options, al, a.cost, conditional) for al in alphas]
+    results = [replay(rows, options, al, a.cost, conditional, policy=a.policy, audit_rate=a.audit_rate)
+               for al in alphas]
     if a.json:
         print(json.dumps(results, indent=2))
         return 0
+    kind = "LTT (holds w.p. ≥ 95%)" if a.policy == "ltt" else ("per-label" if conditional else "marginal")
     print(f"replayed {len(rows)} decisions · options: {', '.join(options)} · "
-          f"{'per-label' if conditional else 'marginal'} guarantee · ${a.cost}/oracle call\n")
+          f"{kind} guarantee · ${a.cost}/oracle call · audits {a.audit_rate:.0%}\n")
     hdr = f"{'target α':>9} {'local':>7} {'error':>7} {'local err':>9} {'steady local':>13} {'steady err':>11} {'cost':>10} {'vs frontier':>12}"
     print(hdr)
     print("─" * len(hdr))
@@ -159,6 +169,48 @@ def _cmd_stats(a) -> int:
     from .server import summary
     from .store import Store
     print(json.dumps(summary(Store(a.db), a.window), indent=2, default=float))
+    return 0
+
+
+def _ledger_key(store) -> bytes:
+    from .store import derive_chain_key
+    env = os.environ.get("KADI_SECRET")
+    if not env:
+        print("note: KADI_SECRET not set; using the key stored in the database. Anyone who can write the\n"
+              "      database can also re-forge the chain. Set KADI_SECRET for real tamper evidence.",
+              file=sys.stderr)
+    return derive_chain_key(env.encode() if env else store.secret())
+
+
+def _cmd_verify(a) -> int:
+    from .store import Store
+    st = Store(a.db)
+    try:
+        res = st.verify(_ledger_key(st))
+    finally:
+        st.close()
+    if res["ok"]:
+        print(f"ledger OK: {res['rows']} chained decisions, head {res['head'][:16]}…")
+        return 0
+    print(f"LEDGER TAMPERED at decision #{res['first_bad_id']} (after {res['rows']} valid rows): {res['reason']}")
+    return 3
+
+
+def _cmd_anchor(a) -> int:
+    """Print the chain head so it can be stored somewhere the DB owner cannot rewrite
+    (a git commit, a ticket, a transparency log). A later `verify` + matching head
+    proves no history was rewritten even by someone holding the key."""
+    from .store import Store
+    st = Store(a.db)
+    try:
+        res = st.verify(_ledger_key(st))
+    finally:
+        st.close()
+    if not res["ok"]:
+        print(f"refusing to anchor a broken chain: {res}", file=sys.stderr)
+        return 3
+    print(json.dumps({"db": os.path.abspath(a.db), "rows": res["rows"], "head": res["head"],
+                      "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}))
     return 0
 
 
@@ -192,6 +244,8 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--alphas", default="0.01,0.02,0.05,0.1")
     s.add_argument("--cost", type=float, default=0.01, help="USD per oracle call")
     s.add_argument("--conditional", action="store_true")
+    s.add_argument("--policy", choices=("conformal", "ltt"), default="conformal")
+    s.add_argument("--audit-rate", type=float, default=0.05)
     s.add_argument("--json", action="store_true")
     s.set_defaults(fn=_cmd_replay)
 
@@ -205,6 +259,14 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--db", default="kadi.db")
     s.add_argument("--window", type=float, help="seconds")
     s.set_defaults(fn=_cmd_stats)
+
+    s = sub.add_parser("verify", help="verify the tamper-evident ledger chain")
+    s.add_argument("--db", default="kadi.db")
+    s.set_defaults(fn=_cmd_verify)
+
+    s = sub.add_parser("anchor", help="print the ledger chain head for external safekeeping")
+    s.add_argument("--db", default="kadi.db")
+    s.set_defaults(fn=_cmd_anchor)
 
     s = sub.add_parser("prune", help="delete old ledger rows")
     s.add_argument("--db", default="kadi.db")

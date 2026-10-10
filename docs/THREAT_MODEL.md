@@ -38,11 +38,13 @@ Kadı sits on the decision path of an application. A compromised decision servic
 | T12 | Oracle outage | `on_oracle_error = "best_guess"` returns flagged local answers; `"raise"` returns HTTP 502 | `TestResilience.test_fallback_when_oracle_down` |
 | T13 | Information leakage in errors | Generic `internal error` responses; no stack traces; no server version banner | `TestServer.test_bad_inputs` |
 | T14 | Dashboard XSS | All database strings are escaped before `innerHTML`; strict CSP (`default-src 'none'`, `frame-ancestors 'none'`) | review |
+| T16 | Rewriting history: editing, deleting or inserting past decisions in the ledger | Every row carries `prev_hash` and `row_hash = HMAC(K, prev_hash ‖ canonical row)`, with K derived from `KADI_SECRET`. `kadi verify` re-derives the chain and names the first bad row. Pruning records an anchor so it stays verifiable. `kadi anchor` exports the chain head for external safekeeping, which also defends against a key holder | `TestLedger` |
 | T15 | Container escape and privilege | Non-root UID, read-only root filesystem, `cap_drop: ALL`, `no-new-privileges`, port published on loopback only | `docker-compose.yml` |
 
 ## Residual risks (operator responsibility)
 
 - **TLS.** Kadı serves plain HTTP. Put it behind a TLS-terminating reverse proxy for any non-loopback traffic.
+- **Ledger key.** Without `KADI_SECRET`, the chain key is derived from a secret stored in the same database, so someone who can write the database can also re-forge the chain. Set `KADI_SECRET`, and anchor the head externally (`kadi anchor`) on a schedule.
 - **Disk encryption.** The SQLite ledger is not encrypted at rest. Use full-disk or volume encryption, or SQLCipher.
 - **Single shared token.** There is no per-user identity or RBAC. Rotate `KADI_TOKEN`, and front the service with your identity proxy if you need per-user access.
 - **Label poisoning through `/api/teach`.** Anyone holding the token can train the reflex. Teach labels never calibrate, so they cannot weaken the error bound, but they can lower the local rate. Restrict who holds the token.

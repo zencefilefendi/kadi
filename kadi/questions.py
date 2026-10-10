@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass, field
 
 MODES = ("live", "shadow")
+POLICIES = ("conformal", "ltt")
 _NAME = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
 
 
@@ -19,6 +20,12 @@ class Question:
                  every label separately, not just on average. Slower to warm up.
     novelty_threshold: share of an input's feature mass never seen in training
                  above which Kadı refuses to answer locally (OOD / adversarial guard).
+    policy:      "conformal" - answer iff the conformal set is a singleton;
+                               Pr(disagree) <= alpha in expectation (with ACI).
+                 "ltt"       - Learn then Test: answer iff max p >= a certified
+                               threshold; with prob >= 1 - delta the decision
+                               risk is <= alpha. Usually answers more locally.
+    delta:       failure probability of the LTT certificate.
     """
     name: str
     options: tuple[str, ...]
@@ -27,6 +34,8 @@ class Question:
     mode: str = "live"
     conditional: bool = False
     novelty_threshold: float = 0.8
+    policy: str = "conformal"
+    delta: float = 0.05
     meta: dict = field(default_factory=dict, compare=False, hash=False)
 
     def __post_init__(self):
@@ -42,6 +51,12 @@ class Question:
             raise ValueError(f"mode must be one of {MODES}")
         if not 0 < self.novelty_threshold <= 1:
             raise ValueError("novelty_threshold must be in (0, 1]")
+        if self.policy not in POLICIES:
+            raise ValueError(f"policy must be one of {POLICIES}")
+        if not 0 < self.delta < 1:
+            raise ValueError("delta must be in (0, 1)")
+        if self.policy == "ltt" and self.conditional:
+            raise ValueError("conditional=True is only available with policy='conformal'")
 
     def index(self, label: str) -> int:
         return self.options.index(label)
