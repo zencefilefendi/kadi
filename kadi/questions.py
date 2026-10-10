@@ -5,6 +5,14 @@ import re
 from dataclasses import dataclass, field
 
 MODES = ("live", "shadow")
+
+
+def quote(value, limit: int = 64) -> str:
+    """Caller-supplied text echoed into an error: printable, single-line, short.
+    Error messages flow back into LLM agents (MCP), so they must not carry
+    attacker-controlled instructions."""
+    s = "".join(c if c.isprintable() else " " for c in str(value))
+    return repr(s if len(s) <= limit else s[:limit] + "…")
 POLICIES = ("conformal", "ltt")
 _NAME = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
 

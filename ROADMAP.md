@@ -9,10 +9,10 @@ This roadmap comes out of a five-engineer review: statistics, ML, systems, secur
 | 1 | **Anytime-valid certification and monitoring** (confidence sequences / betting bounds; Howard et al. 2021, Waudby-Smith & Ramdas 2024) | LTT is re-certified on every sample, so "w.p. ≥ 1−δ" holds only pointwise in time. The drift breaker tests Pr(wrong \| local) with a Wald interval on overlapping windows | False-probation rate ≤ δ′ over 10⁶ simulated decisions; a pinned regression test |
 | 2 | **Certify frozen model snapshots** | Held-out samples shape which escalations train the reflex, so "p̂ independent of calibration" holds only approximately | Simulated violations ≤ δ under adversarial feedback; certificate ↔ model version recorded per decision |
 | 3 | **Checkpointing off the hot path, binary snapshots** | Measured: a 365 MB JSON checkpoint at 150 labels; `json.dumps` takes 6 s **while holding the question lock** | Reflex p99 unchanged during a checkpoint; snapshot ≤ 70 MB |
-| 4 | **Remaining security findings** V5 (prune anchor vs. non-monotonic ts), V6 (CSP `unsafe-inline` → nonces), V7 (echoed caller text) | Second security review | Fixed, each with a regression test |
+| 4 | ~~Remaining security findings V5–V7~~ | Second security review | ✅ **Done in v0.5.1**: contiguous-prefix pruning, per-response CSP script nonce, truncated single-line error echoes |
 | 5 | **Package name** | `kadi` is taken on PyPI (Kadi4Mat); `import kadi` would collide | Publish as `kadi-cascade` with Trusted Publishing; decide on the import name |
 
-Already fixed in this round: **V1** (unchained rows hidden from `verify`), **V2** (forged prompt delimiters), **V3** (MCP crash on deep nesting) and **V4** (bad tokens exhausting legitimate rate limits). Each has a test in `TestSecurityRegressionsV2`.
+All seven findings of the second security review (V1–V7) are fixed in v0.5.1, each with a test in `TestSecurityRegressionsV2`.
 
 ## P1: evidence (make the claims credible)
 

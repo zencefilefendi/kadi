@@ -7,7 +7,7 @@
 Rutin kararları yerelde verir. Bu kararların oracle ile ne sıklıkla ayrıştığına dağılımdan bağımsız bir üst sınır koyar.<br>
 Geri kalan her şeyi oracle'a yükseltir ve her yükseltmeden öğrenir.
 
-[English](README.md) · [Yol haritası](ROADMAP.md) · [Mühendislik raporu](docs/ENGINEERING.tr.md) · [Teori](docs/THEORY.md) · [Tehdit modeli](docs/THREAT_MODEL.md) · [MCP sunucusu](docs/MCP.md)
+[English](README.md) · [Yol haritası](ROADMAP.tr.md) · [Mühendislik raporu](docs/ENGINEERING.tr.md) · [Teori](docs/THEORY.md) · [Tehdit modeli](docs/THREAT_MODEL.md) · [MCP sunucusu](docs/MCP.md)
 
 </div>
 
@@ -195,13 +195,14 @@ Bağımsız bir saldırgan gözüyle yapılan inceleme 11 sorun buldu. Hepsi dü
 
 ## Durum ve bilinen sınırlar
 
-Kadı v0.4, tek sunuculu kullanım için özellik açısından tamamdır. Neyin doğrulandığı ve neyin doğrulanmadığı:
+Kadı v0.5, tek sunuculu kullanım için özellik açısından tamamdır. Neyin doğrulandığı ve neyin doğrulanmadığı:
 
 | Alan | Durum |
 |---|---|
 | Kalibrasyon (conformal, Mondrian, LTT) | ✅ birim ve simülasyon testleri; açık benchmark'ta garanti 126/126 koşuda tuttu |
 | Refleks (n-gram, embedding + k-NN) | ✅ Banking77 ve CLINC150 üzerinde ölçüldü |
-| Servis, güvenlik, defter, MCP | ✅ 87 test (MCP için stdio uçtan uca testi dahil); CI'da Python 3.11–3.13 ve Docker |
+| Servis, güvenlik, defter, MCP | ✅ 95 test (iki güvenlik denetimi regresyon paketi ve MCP stdio uçtan uca testi dahil); CI'da Python 3.11–3.13 ve Docker |
+| İstatistiksel ayrıntılar | ⚠️ Sertifika her an için ayrı ayrı geçerli, bütün akış boyunca birden değil; model ile kalibrasyon arasındaki bağımsızlık da yaklaşık. Bkz. [THEORY §7c](docs/THEORY.md). Düzeltmeler [yol haritasında](ROADMAP.tr.md) P0 önceliğinde |
 | **Gerçek LLM oracle** | ⚠️ kod hazır, ama benchmark'larda oracle olarak **gerçek etiketler** kullanıldı. API anahtarıyla yapılacak ilk iş: `benchmarks/run.py --oracle anthropic` |
 | **Türkçe veri** | ⚠️ çok dilli model Türkçeyi destekliyor, ama Türkçe benchmark henüz koşulmadı |
 | Ölçeklenme | ⚠️ tek süreç ve SQLite; çoklu sunucu için Postgres desteği yol haritasında |

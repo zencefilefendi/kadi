@@ -30,7 +30,7 @@ from typing import Any, Callable
 from . import __version__
 from .engine import Decision, Kadi, Pending
 from .oracles import OracleError, Verdict
-from .questions import MODES, POLICIES, Question
+from .questions import MODES, POLICIES, Question, quote
 
 MODERN_VERSIONS = ("2026-07-28",)
 LEGACY_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
@@ -290,7 +290,7 @@ class KadiMCP:
     def _require_question(self, name: str) -> None:
         if name not in self.engine.questions:
             known = sorted(self.engine.questions)
-            raise ValueError(f"unknown question {name!r}. Known: {known}. Define it with kadi_define_question.")
+            raise ValueError(f"unknown question {quote(name)}. Known: {known}. Define it with kadi_define_question.")
 
     # --------------------------------------------------------------- JSON-RPC
     def handle(self, msg: Any) -> Any:
@@ -352,7 +352,7 @@ class KadiMCP:
             return {"content": [{"type": "text", "text": json.dumps(data, ensure_ascii=False, default=float)}],
                     "structuredContent": data, "isError": False}
         except (ValueError, KeyError, OracleError) as e:  # actionable, safe to show
-            msg = str(e).strip("'\"") or type(e).__name__
+            msg = (str(e).strip("'\"") or type(e).__name__)[:500]
             return {"content": [{"type": "text", "text": f"Error: {msg}"}], "isError": True}
         except Exception as e:  # never leak internals into the conversation
             self.log(f"kadi-mcp: internal error in {tool['name']}: {type(e).__name__}: {e}")

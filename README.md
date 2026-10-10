@@ -11,7 +11,7 @@ Everything else is escalated, and every escalation teaches the local judge.
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 ![Python ≥ 3.11](https://img.shields.io/badge/python-%E2%89%A53.11-blue.svg)
 ![Dependencies: 0](https://img.shields.io/badge/dependencies-0-brightgreen.svg)
-![Tests: 87](https://img.shields.io/badge/tests-87-brightgreen.svg)
+![Tests: 95](https://img.shields.io/badge/tests-95-brightgreen.svg)
 
 [Roadmap](ROADMAP.md) · [Engineering report](docs/ENGINEERING.md) · [Theory](docs/THEORY.md) · [Threat model](docs/THREAT_MODEL.md) · [MCP server](docs/MCP.md) · [Türkçe](README.tr.md) · [TypeScript client](clients/typescript)
 
@@ -297,13 +297,14 @@ docs/               theory, threat model
 
 ## Status and known limitations
 
-Kadı v0.4 is feature-complete for single-instance use. What has and has not been validated:
+Kadı v0.5 is feature-complete for single-instance use. What has and has not been validated:
 
 | Area | Status |
 |---|---|
 | Calibration (conformal, Mondrian, LTT) | ✅ unit and simulation tests; bound held in 126/126 public-benchmark runs |
 | Reflex (n-gram, embeddings + k-NN) | ✅ benchmarked on Banking77 and CLINC150 |
-| Service, security controls, ledger, MCP | ✅ 87 tests, including an adversarial-review regression suite and an MCP stdio end-to-end test; CI on Python 3.11–3.13 + Docker |
+| Service, security controls, ledger, MCP | ✅ 95 tests, including two adversarial-review regression suites and an MCP stdio end-to-end test; CI on Python 3.11–3.13 + Docker |
+| Statistical fine print | ⚠️ the certificate holds pointwise in time, not uniformly over the stream, and model/calibration independence is approximate; see [THEORY §7c](docs/THEORY.md). Fixes are P0 in the [roadmap](ROADMAP.md) |
 | **Real LLM oracle** | ⚠️ `AnthropicOracle` / `OpenAICompatibleOracle` are implemented, but benchmarks used **gold labels** as the oracle. A real-oracle run (`benchmarks/run.py --oracle anthropic`) is the first thing to do with an API key |
 | **Turkish data** | ⚠️ the multilingual model supports Turkish, but no Turkish benchmark has been run yet |
 | Scale-out | ⚠️ single process + SQLite; multi-instance deployments need the Postgres backend on the roadmap |

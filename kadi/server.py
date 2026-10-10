@@ -12,6 +12,7 @@ from __future__ import annotations
 import hmac
 import ipaddress
 import json
+import secrets
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -19,16 +20,16 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .oracles import OracleError
+from .questions import quote
 from .store import Store
 
 DASHBOARD = Path(__file__).with_name("dashboard.html")
 MAX_BODY = 256 * 1024
 MAX_BATCH = 100
+# API responses never need to run anything; the dashboard gets a per-response
+# script nonce instead of 'unsafe-inline' (see _dashboard_csp).
 SECURITY_HEADERS = {
-    "content-security-policy": ("default-src 'none'; script-src 'self' 'unsafe-inline'; "
-                                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-                                "font-src https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:; "
-                                "frame-ancestors 'none'; base-uri 'none'; form-action 'none'"),
+    "content-security-policy": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
     "x-content-type-options": "nosniff",
     "x-frame-options": "DENY",
     "referrer-policy": "no-referrer",
@@ -37,6 +38,12 @@ SECURITY_HEADERS = {
 
 
 # ------------------------------------------------------------------ queries
+def _dashboard_csp(nonce: str) -> str:
+    return (f"default-src 'none'; script-src 'nonce-{nonce}'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; "
+            "connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+
+
 def summary(store: Store, window: float | None = None) -> dict:
     since = time.time() - window if window else 0.0
     qrows = store.query("SELECT question, stats FROM qstats ORDER BY question")
@@ -237,7 +244,10 @@ def make_handler(store: Store, engine=None, token: str | None = None, rate_limit
             qs = parse_qs(u.query)
             arg = lambda k, d: qs.get(k, [d])[0]  # noqa: E731
             if method == "GET" and u.path in ("/", "/index.html"):
-                return self._send(200, DASHBOARD.read_bytes(), "text/html; charset=utf-8")
+                nonce = secrets.token_urlsafe(18)
+                page = DASHBOARD.read_bytes().replace(b"<script>", f'<script nonce="{nonce}">'.encode(), 1)
+                return self._send(200, page, "text/html; charset=utf-8",
+                                  {"content-security-policy": _dashboard_csp(nonce)})
             if method == "GET" and u.path == "/healthz":
                 return self._json({"ok": True})
             if not (u.path.startswith("/api/") or u.path == "/metrics"):
@@ -298,7 +308,7 @@ def make_handler(store: Store, engine=None, token: str | None = None, rate_limit
             if not isinstance(q, str) or not isinstance(text, str):
                 raise _HTTPError(400, "question and text must be strings")
             if q not in engine.questions:
-                raise _HTTPError(404, f"unknown question {q!r}")
+                raise _HTTPError(404, f"unknown question {quote(q)}")
             vals = [body.get(k) for k in extra]
             if any(not isinstance(v, str) for v in vals):
                 raise _HTTPError(400, f"{', '.join(extra)} must be strings")
@@ -309,7 +319,7 @@ def make_handler(store: Store, engine=None, token: str | None = None, rate_limit
             try:
                 return engine.decide(q, text, body.get("context"))
             except ValueError as e:
-                raise _HTTPError(400, str(e))
+                raise _HTTPError(400, str(e)[:500])
             except OracleError:
                 raise _HTTPError(502, "oracle unavailable")
 

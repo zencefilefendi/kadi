@@ -137,7 +137,21 @@ Bağımsız inceleme **11 sorun** buldu. Hepsi düzeltildi ve her biri için bir
 - maskelemenin farklı girdileri aynı hafıza anahtarında birleştirmesi;
 - denetimin, oracle'ın az önce reddettiği etiketi döndürmesi.
 
-### 5.4 Diğer dersler
+### 5.4 İkinci güvenlik denetimi (v0.5)
+
+Beş mühendislik yol haritası çalışması sırasında yapılan ikinci bağımsız inceleme **7 sorun daha** buldu. Hepsi düzeltildi ve her biri için bir regresyon testi var (`TestSecurityRegressionsV2`):
+
+- **V1:** zincir başladıktan sonra özetsiz satırlar eklenip `verify`'dan kaçırılabiliyordu.
+- **V2:** prompt ayraçları iç içe yazılarak (`</in</input>put>`) sahtelenebiliyordu, çünkü etiketler kaçırılmak yerine siliniyordu.
+- **V3:** derin iç içe tek bir JSON satırı MCP sunucusunu çökertiyordu.
+- **V4:** hız sınırı kimlik doğrulamadan önce uygulandığı için hatalı tokenlar gerçek kullanıcıların kotasını tüketebiliyordu.
+- **V5:** saat geriye kaydığında budama işlemi zinciri ortadan kesebiliyordu.
+- **V6:** panelin CSP'si `'unsafe-inline'` script'e izin veriyordu; artık her yanıtta yeni bir nonce kullanılıyor.
+- **V7:** çağıranın metni, LLM ajanlarına geri dönen hata mesajlarına olduğu gibi yansıyordu; artık kısaltılıyor ve tek satıra indiriliyor.
+
+Aynı inceleme THEORY §7c'deki istatistiksel kısıtları da ortaya çıkardı.
+
+### 5.5 Diğer dersler
 
 - **Hiç tetiklenmeyen sapma testi.** Oracle etiketleri ters çevirdiğinde Kadı ~40 kararda yeniden öğrendi; kesicinin devreye girmemesi doğru davranıştı. Test, kesiciyi doğrudan sınayacak şekilde yeniden yazıldı.
 - **Etiket başına garanti 77–150 etikette ölçeklenmiyor.** Her etiketin kendi kanıtını toplaması gerekiyor. Bu durum belgelendi: az etiketli sorularda kullanılmalı.
@@ -148,7 +162,7 @@ Bağımsız inceleme **11 sorun** buldu. Hepsi düzeltildi ve her biri için bir
 
 | Kontrol | Sonuç |
 |---|---|
-| Birim, entegrasyon, güvenlik regresyonu ve MCP testleri | **87 test**; numpy gerektiren 2 test standart Python ortamında atlanıyor |
+| Birim, entegrasyon, güvenlik regresyonu ve MCP testleri | **95 test**; numpy gerektiren 2 test standart Python ortamında atlanıyor |
 | LTT sertifikasının geçerliliği | 300 simülasyonda yanılma oranı δ sınırında kaldı (test toleransı +0,03) |
 | CI | Python 3.11, 3.12, 3.13; anlamsal refleks; TypeScript tip denetimi; Docker. v0.5.0'da hepsi yeşil |
 | Defter bütünlüğü | Değiştirilmiş, silinmiş ve araya eklenmiş satırlar ile yanlış anahtar testlerde yakalanıyor |
@@ -167,7 +181,7 @@ Bağımsız inceleme **11 sorun** buldu. Hepsi düzeltildi ve her biri için bir
 ## 8. Her şeyi yeniden üretmek
 
 ```bash
-python -m unittest discover -s tests                         # 87 test
+python -m unittest discover -s tests                         # 95 test
 python examples/demo.py                                      # demo + panel, :8765
 python benchmarks/run.py                                     # n-gram refleksi (~3,5 MB indirme, SHA-256 doğrulamalı)
 uv venv -p 3.12 .venv && uv pip install -p .venv/bin/python -e ".[embed]"

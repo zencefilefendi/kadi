@@ -41,7 +41,7 @@ from .conformal import AdaptiveConformal, LearnThenTest, MondrianConformal, conf
 from .features import HashingFeaturizer, normalize
 from .learner import OnlineSoftmax
 from .oracles import Oracle, OracleError, Verdict
-from .questions import Question
+from .questions import Question, quote
 from .store import Store, derive_chain_key
 
 MAX_INPUT_CHARS = 32_000
@@ -290,7 +290,7 @@ class Kadi:
         if label not in case.brain.q.options:
             with self._reg:  # let the caller retry with a valid label
                 self._pending[ticket] = case
-            raise ValueError(f"label {label!r} not in {list(case.brain.q.options)}")
+            raise ValueError(f"label {quote(label)} not in {list(case.brain.q.options)}")
         latency = (time.perf_counter() - case.t0) * 1000
         return self._complete(case, Verdict(label, float(cost_usd), latency, model))
 
@@ -402,7 +402,7 @@ class Kadi:
         are not a random sample."""
         brain = self._brain(question)
         if label not in brain.q.options:
-            raise ValueError(f"label {label!r} not in {brain.q.options}")
+            raise ValueError(f"label {quote(label)} not in {list(brain.q.options)}")
         _, _, key, x = self._prepare(text, context)
         with brain.lock:
             brain.learn(x, brain.model.predict_proba(x), label, calibrate=False)
@@ -499,7 +499,7 @@ class Kadi:
         if isinstance(q, str):
             b = self._brains.get(q)
             if b is None:
-                raise KeyError(f"unknown question {q!r}")
+                raise KeyError(f"unknown question {quote(q)}")
             return b
         b = self._brains.get(q.name)
         if b is not None:

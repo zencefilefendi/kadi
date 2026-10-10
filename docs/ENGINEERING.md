@@ -135,7 +135,21 @@ An independent review found **11 issues**; all were fixed, each with a regressio
 - redaction merging different inputs into one memory key;
 - audits returning a label the oracle had just contradicted.
 
-### 5.4 Smaller lessons
+### 5.4 Second security review (v0.5)
+
+A second independent review, done as part of the five-engineer roadmap, found **7 more issues**. All are fixed, each with a regression test (`TestSecurityRegressionsV2`):
+
+- **V1:** rows without a hash could be inserted after the chain began and slip past `verify`.
+- **V2:** prompt delimiters could be forged by nesting (`</in</input>put>`), because tags were deleted rather than escaped.
+- **V3:** a single deeply nested JSON line crashed the MCP server.
+- **V4:** with the rate limit applied before authentication, bad tokens could exhaust the quota of legitimate callers.
+- **V5:** pruning with a non-monotonic clock could cut the chain in the middle.
+- **V6:** the dashboard CSP allowed `'unsafe-inline'` scripts; it now uses a fresh nonce per response.
+- **V7:** caller text was echoed into errors that flow back into LLM agents; it is now truncated and made single-line.
+
+The same review led to the statistical caveats in THEORY §7c.
+
+### 5.5 Smaller lessons
 
 - **A drift test that never tripped.** When the oracle flipped its labels, Kadı relearned within about 40 decisions, so the breaker correctly stayed quiet. The test was rewritten to exercise the breaker directly.
 - **Per-label guarantees don't scale to 77–150 labels.** Every label needs its own evidence, so local answers stay near zero. This is documented: use it for questions with few labels.
@@ -146,7 +160,7 @@ An independent review found **11 issues**; all were fixed, each with a regressio
 
 | Check | Result |
 |---|---|
-| Unit, integration, security-regression and MCP tests | **87 tests**; 2 numpy-only tests are skipped on the stdlib-only interpreter |
+| Unit, integration, security-regression and MCP tests | **95 tests**; 2 numpy-only tests are skipped on the stdlib-only interpreter |
 | LTT certificate validity | Simulation over 300 draws: certificate failure rate within δ (test tolerance +0.03) |
 | CI (GitHub Actions) | Python 3.11, 3.12 and 3.13; semantic reflex; TypeScript type-check; Docker build. All green at v0.5.0 |
 | Ledger integrity | Tests detect edited, deleted and inserted rows and a wrong key |
@@ -165,7 +179,7 @@ An independent review found **11 issues**; all were fixed, each with a regressio
 ## 8. Reproducing everything
 
 ```bash
-python -m unittest discover -s tests                         # 87 tests
+python -m unittest discover -s tests                         # 95 tests
 python examples/demo.py                                      # demo + dashboard on :8765
 python benchmarks/run.py                                     # hashed reflex, all policies (~3.5 MB download, SHA-256 verified)
 uv venv -p 3.12 .venv && uv pip install -p .venv/bin/python -e ".[embed]"

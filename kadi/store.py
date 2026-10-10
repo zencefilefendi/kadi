@@ -135,11 +135,19 @@ class Store:
         anchor the first surviving row must link to, so pruning stays verifiable."""
         cutoff = time.time() - older_than_days * 86400
         with self.lock:
-            last = self.db.execute("SELECT row_hash FROM decisions WHERE ts < ? AND row_hash IS NOT NULL "
-                                   "ORDER BY id DESC LIMIT 1", (cutoff,)).fetchone()
+            # Delete a contiguous id-prefix (every row before the first one that is
+            # still young), never an id-gap: with a non-monotonic clock, deleting by
+            # ts alone would cut the chain in the middle. Retention errs on keeping.
+            first_keep = self.db.execute("SELECT MIN(id) m FROM decisions WHERE ts >= ?", (cutoff,)).fetchone()["m"]
+            cut = (first_keep - 1) if first_keep is not None else \
+                self.db.execute("SELECT COALESCE(MAX(id), 0) m FROM decisions").fetchone()["m"]
+            if cut <= 0:
+                return 0
+            last = self.db.execute("SELECT row_hash FROM decisions WHERE id <= ? AND row_hash IS NOT NULL "
+                                   "ORDER BY id DESC LIMIT 1", (cut,)).fetchone()
             if last:
                 self.db.execute("INSERT OR REPLACE INTO meta VALUES ('chain_anchor', ?)", (last["row_hash"],))
-            return self.db.execute("DELETE FROM decisions WHERE ts < ?", (cutoff,)).rowcount
+            return self.db.execute("DELETE FROM decisions WHERE id <= ?", (cut,)).rowcount
 
     def verify(self, key: bytes) -> dict:
         """Re-derive the whole chain. Detects edited, deleted, inserted or

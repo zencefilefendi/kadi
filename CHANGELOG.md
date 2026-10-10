@@ -4,19 +4,25 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-10-11
+
+Security and documentation release. Calibration and decisions are unchanged, and existing databases upgrade in place.
+
 ### Security
-- Fixed from the second security review, each with a regression test (`TestSecurityRegressionsV2`):
-  - **V1:** rows without a hash after the chain start are now reported as tampering.
-  - **V2:** prompt delimiters can no longer be forged; untrusted text is HTML-escaped instead of having tags stripped.
-  - **V3:** deeply nested JSON no longer crashes the MCP or HTTP servers.
-  - **V4:** failed authentications use a separate rate-limit bucket, so bad tokens cannot exhaust legitimate quota.
+Seven findings from the second independent security review are fixed, each with a regression test (`TestSecurityRegressionsV2`):
+- **V1:** rows without a hash after the chain start are now reported as tampering. The chain start is recorded once, so v0.1/v0.2 rows stay valid.
+- **V2:** prompt delimiters can't be forged any more; untrusted text and context are HTML-escaped instead of having their tags stripped.
+- **V3:** deeply nested JSON returns a parse error instead of crashing the MCP server, and a 400 from the HTTP API.
+- **V4:** failed authentications are rate-limited in a separate bucket, so bad tokens can't exhaust legitimate callers' quota.
+- **V5:** pruning deletes a contiguous id-prefix, so the chain stays verifiable with a non-monotonic clock.
+- **V6:** the dashboard CSP uses a fresh script nonce per response instead of `'unsafe-inline'`, and API responses allow no scripts.
+- **V7:** caller-supplied text echoed into errors is truncated and made single-line, since those errors reach LLM agents.
 
 ### Documentation
-- `ROADMAP.md` from the five-engineer review.
-- THEORY §7c lists the known statistical caveats.
-
-### Documentation
-- `docs/ENGINEERING.md` and `docs/ENGINEERING.tr.md`: an engineering report covering the techniques used and why, all benchmark results (the bound held in 126/126 runs; 75–85% fewer oracle calls at α = 5%), the bugs found and how they were fixed, the verification inventory, and what is still unverified.
+- `ROADMAP.md` (EN) and `ROADMAP.tr.md` (TR), produced by a five-engineer review covering statistics, ML, systems, security and research/ecosystem.
+- THEORY §7c, "Known statistical caveats": the certificate is pointwise in time, independence holds only approximately, the drift breaker tests a different quantity, ACI on a thinned stream, mixed sampling rates, and memory answers.
+- Engineering report: the second security review; test counts updated to 95.
+- Threat model: T4, T9, T14, T16 and T17 updated for the new controls.
 
 ## [0.5.0] — 2026-10-10
 
