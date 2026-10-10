@@ -1,0 +1,27 @@
+services:
+  kadi:
+    build: .
+    image: kadi:latest
+    restart: unless-stopped
+    # The container listens on 0.0.0.0 (KADI_TOKEN required); the port is only published on loopback.
+    ports:
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - ./kadi.toml:/config/kadi.toml:ro
+      - kadi-data:/data
+    environment:
+      KADI_TOKEN: ${KADI_TOKEN:-}
+      KADI_SECRET: ${KADI_SECRET:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      KADI_WEBHOOK: ${KADI_WEBHOOK:-}
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  kadi-data:

@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kadi"
+version = "0.2.0"
+description = "A calibrated judge in front of your frontier model: routine decisions locally, with a conformal guarantee."
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.11"
+dependencies = []
+keywords = ["llm", "routing", "conformal-prediction", "distillation", "agents", "cost"]
+
+[project.scripts]
+kadi = "kadi.cli:main"
+
+[tool.setuptools]
+packages = ["kadi"]
+
+[tool.setuptools.package-data]
+kadi = ["dashboard.html"]

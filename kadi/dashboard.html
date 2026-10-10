@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kadı Divan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f4f3ef; --surface: #fcfcfb; --surface-2: #f0efec; --line: #e2e0da;
+  --text: #0b0b0b; --text-2: #52514e; --muted: #8a8880;
+  --reflex: #2a78d6; --oracle: #eb6834; --memory: #1baf7a; --fallback: #eda100;
+  --good: #0ca30c; --warn: #fab219; --critical: #d03b3b;
+  --gold: #a87a1f;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0f0f0e; --surface: #1a1a19; --surface-2: #232321; --line: #2f2f2c;
+    --text: #ffffff; --text-2: #c3c2b7; --muted: #8b8a82;
+    --reflex: #3987e5; --oracle: #d95926; --memory: #199e70; --fallback: #c98500; --gold: #d9a441;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f0f0e; --surface: #1a1a19; --surface-2: #232321; --line: #2f2f2c;
+  --text: #ffffff; --text-2: #c3c2b7; --muted: #8b8a82;
+  --reflex: #3987e5; --oracle: #d95926; --memory: #199e70; --fallback: #c98500; --gold: #d9a441;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.45 "Inter Tight", system-ui, -apple-system, sans-serif; }
+.mono, .num { font-family: "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.wrap { max-width: 1320px; margin: 0 auto; padding: 20px 16px 48px; }
+header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 20px; }
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand h1 { font-size: 20px; margin: 0; letter-spacing: .02em; }
+.brand h1 span { color: var(--text-2); font-weight: 400; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
+  background: var(--surface); border: 1px solid var(--line); color: var(--text-2); font-size: 12px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); box-shadow: 0 0 0 3px color-mix(in oklab, var(--good) 25%, transparent); }
+.dot.off { background: var(--critical); box-shadow: none; }
+.spacer { flex: 1; }
+button.theme { background: var(--surface); color: var(--text-2); border: 1px solid var(--line);
+  border-radius: 8px; padding: 6px 10px; cursor: pointer; font: inherit; font-size: 12px; }
+.grid { display: grid; gap: 14px; }
+.hero { grid-template-columns: 1.4fr repeat(4, 1fr); }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; min-width: 0; }
+.label { color: var(--text-2); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+.big { font-size: 40px; font-weight: 600; letter-spacing: -.02em; margin: 6px 0 2px; }
+.mid { font-size: 28px; font-weight: 600; letter-spacing: -.01em; margin: 6px 0 2px; }
+.sub { color: var(--text-2); font-size: 12.5px; }
+.saved .big { color: var(--gold); }
+.two { grid-template-columns: 1fr 1fr; margin-top: 14px; }
+.three { grid-template-columns: 1fr; margin-top: 14px; }
+h2 { font-size: 14px; margin: 0 0 2px; font-weight: 600; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; margin: 6px 0 8px; color: var(--text-2); font-size: 12px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: 220px; overflow: visible; }
+.chart .axis text { fill: var(--muted); font-size: 10.5px; font-family: "JetBrains Mono", monospace; }
+.chart .grid line { stroke: var(--line); }
+.tip { position: absolute; pointer-events: none; background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: 8px; padding: 8px 10px; font-size: 12px; white-space: nowrap; opacity: 0; transition: opacity .1s;
+  box-shadow: 0 6px 24px rgba(0,0,0,.18); z-index: 3; }
+.tip b { font-weight: 600; }
+.tip .row { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.tip i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-weight: 500; color: var(--text-2); font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em;
+  padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: middle; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+.tablewrap { overflow-x: auto; margin: 4px -6px 0; }
+.mix { display: flex; height: 8px; width: 140px; border-radius: 4px; overflow: hidden; gap: 2px; background: var(--surface-2); }
+.mix span { display: block; height: 100%; }
+.badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--text-2); }
+.badge.ok::before { content: "✓"; color: var(--good); font-weight: 700; }
+.badge.bad::before { content: "!"; color: var(--critical); font-weight: 700; }
+.badge.wait::before { content: "◌"; color: var(--warn); font-weight: 700; }
+.feed { max-height: 420px; overflow-y: auto; margin: 6px -6px 0; }
+.ev { display: grid; grid-template-columns: 74px 1fr auto; gap: 10px; padding: 9px 6px; border-bottom: 1px solid var(--line); align-items: start; }
+.ev:last-child { border-bottom: 0; }
+.chip { font-size: 11px; font-weight: 600; border-radius: 6px; padding: 2px 0; text-align: center; color: #fff; letter-spacing: .03em; }
+.chip.memory { background: var(--memory); } .chip.reflex { background: var(--reflex); } .chip.oracle { background: var(--oracle); }
+.ev .q { color: var(--text-2); font-size: 11.5px; }
+.ev .p { color: var(--text); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.ev .r { text-align: right; font-size: 12px; }
+.ev .r .l { font-weight: 600; }
+.ev.new { animation: flash 1.2s ease-out; }
+@keyframes flash { from { background: color-mix(in oklab, var(--gold) 18%, transparent); } to { background: transparent; } }
+.oath { margin-top: 14px; display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: center; }
+.oath p { margin: 4px 0 0; color: var(--text-2); max-width: 900px; }
+.chip.fallback { background: var(--fallback); color: #1a1a19; }
+.alerts { display: none; margin-bottom: 14px; border-color: color-mix(in oklab, var(--critical) 55%, var(--line)); }
+.alerts.on { display: block; }
+.alert { display: flex; gap: 10px; align-items: baseline; padding: 4px 0; font-size: 13px; }
+.alert .ic { color: var(--critical); font-weight: 700; }
+.mode { font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line); color: var(--text-2); margin-left: 6px; }
+.mode.shadow { border-style: dashed; }
+.why { color: var(--muted); font-size: 11px; }
+#gate { position: fixed; inset: 0; background: color-mix(in oklab, var(--bg) 92%, transparent); display: none; align-items: center; justify-content: center; z-index: 10; padding: 16px; }
+#gate.on { display: flex; }
+#gate form { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 22px; width: min(420px, 100%); }
+#gate input { width: 100%; margin: 12px 0; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text); font: inherit; }
+#gate button { padding: 9px 14px; border-radius: 8px; border: 0; background: var(--gold); color: #111; font: inherit; font-weight: 600; cursor: pointer; }
+.empty { color: var(--muted); padding: 30px 0; text-align: center; }
+@media (max-width: 1080px) { .hero { grid-template-columns: 1fr 1fr; } .hero .saved { grid-column: 1 / -1; } .two, .three { grid-template-columns: 1fr; } }
+@media (max-width: 520px) { .hero { grid-template-columns: 1fr; } .big { font-size: 34px; } .oath { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <svg width="34" height="34" viewBox="0 0 40 40" aria-hidden="true">
+        <g fill="none" stroke="var(--gold)" stroke-width="2">
+          <rect x="9" y="9" width="22" height="22" rx="2"/>
+          <rect x="9" y="9" width="22" height="22" rx="2" transform="rotate(45 20 20)"/>
+        </g>
+        <circle cx="20" cy="20" r="4" fill="var(--gold)"/>
+      </svg>
+      <h1>Kadı <span>· Divan</span></h1>
+    </div>
+    <span class="pill"><span class="dot" id="live"></span><span id="liveTxt">connecting</span></span>
+    <span class="pill" id="oathPill">guarantee: —</span>
+    <div class="spacer"></div>
+    <button class="theme" id="themeBtn" aria-label="Toggle color theme">◐ theme</button>
+  </header>
+
+  <section class="card alerts" id="alerts" role="alert"></section>
+
+  <section class="grid hero">
+    <div class="card saved">
+      <div class="label">Saved vs. frontier-only</div>
+      <div class="big num" id="saved">$0.00</div>
+      <div class="sub"><span class="num" id="spent">$0.00</span> spent · <span class="num" id="cf">$0.00</span> if every call hit the oracle</div>
+    </div>
+    <div class="card"><div class="label">Decisions</div><div class="mid num" id="n">0</div><div class="sub" id="nSub">—</div></div>
+    <div class="card"><div class="label">Decided locally</div><div class="mid num" id="local">—</div><div class="sub" id="localSub">memory + reflex</div></div>
+    <div class="card"><div class="label">Verified agreement</div><div class="mid num" id="agree">—</div><div class="sub" id="agreeSub">random audits vs. oracle</div></div>
+    <div class="card"><div class="label">Latency, local / oracle</div><div class="mid num" id="lat">—</div><div class="sub" id="latSub">mean ms</div></div>
+  </section>
+
+  <section class="grid two">
+    <div class="card">
+      <h2>Who decided, over time</h2>
+      <div class="legend"><span><i style="background:var(--memory)"></i>Memory</span><span><i style="background:var(--reflex)"></i>Reflex (local model)</span><span><i style="background:var(--oracle)"></i>Oracle (frontier)</span><span><i style="background:var(--fallback)"></i>Fallback (oracle down)</span></div>
+      <div class="chart" id="mixChart"><svg></svg><div class="tip"></div></div>
+    </div>
+    <div class="card">
+      <h2>Cumulative spend</h2>
+      <div class="legend"><span><i style="background:var(--gold)"></i>Kadı (actual)</span><span><i style="background:var(--muted)"></i>Frontier-only</span></div>
+      <div class="chart" id="costChart"><svg></svg><div class="tip"></div></div>
+    </div>
+  </section>
+
+  <section class="grid three">
+    <div class="card">
+      <h2>Courts</h2>
+      <div class="sub">One court per decision type. Each keeps its own model and its own error guarantee.</div>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Question</th><th>Mix (recent 500)</th><th>Local</th><th>Why escalated</th><th>Target α</th><th>Live α<sub>t</sub></th><th>Miscoverage</th><th>Audit agreement</th><th>Trained on</th><th>Status</th></tr></thead>
+        <tbody id="courts"><tr><td colspan="10" class="empty">No decisions yet</td></tr></tbody>
+      </table></div>
+    </div>
+    <div class="card">
+      <h2>Live docket</h2>
+      <div class="feed" id="feed"><div class="empty">Waiting for the first case…</div></div>
+    </div>
+  </section>
+
+  <section class="card oath">
+    <svg width="44" height="44" viewBox="0 0 40 40" aria-hidden="true"><path d="M20 4 L34 10 V20 C34 28 28 34 20 37 C12 34 6 28 6 20 V10 Z" fill="none" stroke="var(--gold)" stroke-width="2"/><path d="M14 20 l4 4 l8 -9" fill="none" stroke="var(--gold)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div>
+      <h2>The oath</h2>
+      <p>Kadı answers on its own only when its conformal prediction set has exactly one label. Otherwise it escalates to the oracle. Under exchangeability, this keeps the share of decisions that disagree with the oracle at or below each court's target α. Adaptive conformal inference adjusts α<sub>t</sub> as traffic drifts. Random audits re-ask the oracle about local answers, so the agreement figure above is measured, not assumed.</p>
+    </div>
+  </section>
+</div>
+
+<div id="gate"><form id="gateForm">
+  <h2>API token required</h2>
+  <div class="sub">This Kadı instance is protected. Paste the value of <span class="mono">KADI_TOKEN</span>. It is kept only in this tab's session storage.</div>
+  <input id="gateInput" type="password" autocomplete="off" aria-label="API token">
+  <button type="submit">Unlock</button>
+</form></div>
+<script>
+const $ = (id) => document.getElementById(id);
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const fmt$ = (x) => x === 0 ? "$0" : x >= 100 ? "$" + x.toFixed(0) : x >= 1 ? "$" + x.toFixed(2) : "$" + x.toFixed(4);
+const fmtN = (x) => x >= 1e6 ? (x/1e6).toFixed(2)+"M" : x >= 1e4 ? (x/1e3).toFixed(1)+"k" : String(x);
+const pct = (x, d=1) => x == null ? "—" : (100*x).toFixed(d) + "%";
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const NS = "http://www.w3.org/2000/svg";
+
+// theme toggle
+try { const t = localStorage.getItem("kadi-theme"); if (t) document.documentElement.dataset.theme = t; } catch {}
+$("themeBtn").onclick = () => {
+  const dark = document.documentElement.dataset.theme
+    ? document.documentElement.dataset.theme === "dark"
+    : matchMedia("(prefers-color-scheme: dark)").matches;
+  const next = dark ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem("kadi-theme", next); } catch {}
+  draw();
+};
+
+let S = null, T = [], lastId = 0, feedItems = [];
+let TOKEN = ""; try { TOKEN = sessionStorage.getItem("kadi-token") || ""; } catch {}
+async function api(path) {
+  const r = await fetch(path, { headers: TOKEN ? { authorization: "Bearer " + TOKEN } : {} });
+  if (r.status === 401) { $("gate").classList.add("on"); $("gateInput").focus(); throw new Error("auth"); }
+  if (!r.ok) throw new Error(String(r.status));
+  return r.json();
+}
+$("gateForm").onsubmit = (e) => {
+  e.preventDefault(); TOKEN = $("gateInput").value.trim();
+  try { sessionStorage.setItem("kadi-token", TOKEN); } catch {}
+  $("gate").classList.remove("on"); tick();
+};
+
+function niceMax(v) { if (v <= 0) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))); const m = v / p; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p; }
+function el(tag, attrs, parent) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent && parent.appendChild(e); return e; }
+function frame(svg) { svg.innerHTML = ""; const w = svg.clientWidth || 600, h = 220; svg.setAttribute("viewBox", `0 0 ${w} ${h}`); return { w, h, l: 44, r: 8, t: 8, b: 22 }; }
+function axes(svg, f, max, fmtY, times) {
+  const g = el("g", { class: "grid" }, svg), a = el("g", { class: "axis" }, svg);
+  for (let i = 0; i <= 4; i++) {
+    const y = f.t + (f.h - f.t - f.b) * (1 - i / 4);
+    el("line", { x1: f.l, x2: f.w - f.r, y1: y, y2: y, "stroke-width": 1 }, g);
+    const tx = el("text", { x: f.l - 6, y: y + 3, "text-anchor": "end" }, a); tx.textContent = fmtY(max * i / 4);
+  }
+  if (times.length) {
+    [0, Math.floor(times.length / 2), times.length - 1].forEach((i, k) => {
+      const x = f.l + (f.w - f.l - f.r) * (i + .5) / times.length;
+      const tx = el("text", { x, y: f.h - 6, "text-anchor": k === 0 ? "start" : k === 2 ? "end" : "middle" }, a);
+      tx.textContent = new Date(times[i] * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    });
+  }
+}
+function tipAt(box, html, x, y) {
+  const tip = box.querySelector(".tip"); tip.innerHTML = html; tip.style.opacity = 1;
+  const bw = box.clientWidth, tw = tip.offsetWidth;
+  tip.style.left = Math.min(Math.max(0, x + 12), bw - tw) + "px"; tip.style.top = Math.max(0, y - 10) + "px";
+}
+
+function drawMix() {
+  const box = $("mixChart"), svg = box.querySelector("svg"), f = frame(svg);
+  if (!T.length) return;
+  const tot = T.map(b => b.memory + b.reflex + b.oracle + (b.fallback || 0)), max = niceMax(Math.max(...tot));
+  axes(svg, f, max, v => Number.isInteger(v) ? fmtN(v) : v.toFixed(1), T.map(b => b.t));
+  const pw = (f.w - f.l - f.r) / T.length, bw = Math.max(1, pw - 2), ph = f.h - f.t - f.b;
+  const cols = { memory: css("--memory"), reflex: css("--reflex"), oracle: css("--oracle"), fallback: css("--fallback") };
+  T.forEach((b, i) => {
+    let y = f.t + ph; const x = f.l + i * pw + 1;
+    const segs = ["memory", "reflex", "oracle", "fallback"].filter(k => b[k]);
+    segs.forEach((k, j) => {
+      const h = ph * b[k] / max, y0 = y - h, hh = Math.max(0.5, h - (j > 0 ? 2 : 0));
+      if (j === segs.length - 1) {
+        const r = Math.min(3, bw / 2, hh);
+        el("path", { d: `M${x},${y0 + hh} V${y0 + r} Q${x},${y0} ${x + r},${y0} H${x + bw - r} Q${x + bw},${y0} ${x + bw},${y0 + r} V${y0 + hh} Z`, fill: cols[k] }, svg);
+      } else el("rect", { x, y: y0, width: bw, height: hh, fill: cols[k] }, svg);
+      y = y0;
+    });
+  });
+  const hit = el("rect", { x: f.l, y: f.t, width: f.w - f.l - f.r, height: ph, fill: "transparent" }, svg);
+  const cursor = el("rect", { y: f.t, height: ph, width: pw, fill: css("--text"), opacity: 0, "pointer-events": "none" }, svg);
+  hit.onmousemove = (e) => {
+    const r = svg.getBoundingClientRect(), sx = (e.clientX - r.left) * f.w / r.width;
+    const i = Math.min(T.length - 1, Math.max(0, Math.floor((sx - f.l) / pw))), b = T[i], n = b.memory + b.reflex + b.oracle + (b.fallback || 0);
+    cursor.setAttribute("x", f.l + i * pw); cursor.setAttribute("opacity", .06);
+    tipAt(box, `<b>${new Date(b.t * 1000).toLocaleTimeString()}</b> · ${n} decisions
+      <div class="row"><span><i style="background:${cols.memory}"></i>Memory</span><span class="num">${b.memory}</span></div>
+      <div class="row"><span><i style="background:${cols.reflex}"></i>Reflex</span><span class="num">${b.reflex}</span></div>
+      <div class="row"><span><i style="background:${cols.oracle}"></i>Oracle</span><span class="num">${b.oracle}</span></div>
+      ${b.fallback ? `<div class="row"><span><i style="background:${cols.fallback}"></i>Fallback</span><span class="num">${b.fallback}</span></div>` : ""}`, e.clientX - r.left, e.clientY - r.top);
+  };
+  hit.onmouseleave = () => { cursor.setAttribute("opacity", 0); box.querySelector(".tip").style.opacity = 0; };
+}
+
+function drawCost() {
+  const box = $("costChart"), svg = box.querySelector("svg"), f = frame(svg);
+  if (!T.length || !S) return;
+  const n = S.totals.n || 1, unit = (S.totals.counterfactual || 0) / n;
+  let a = 0, c = 0; const act = [], cf = [];
+  T.forEach(b => { a += b.cost || 0; c += (b.memory + b.reflex + b.oracle + (b.fallback || 0)) * unit; act.push(a); cf.push(c); });
+  const max = niceMax(Math.max(c, a, 1e-6));
+  axes(svg, f, max, v => fmt$(v), T.map(b => b.t));
+  const pw = (f.w - f.l - f.r) / T.length, ph = f.h - f.t - f.b;
+  const X = i => f.l + pw * (i + .5), Y = v => f.t + ph * (1 - v / max);
+  const line = (arr, col, dash) => el("path", { d: arr.map((v, i) => (i ? "L" : "M") + X(i) + "," + Y(v)).join(""),
+    fill: "none", stroke: col, "stroke-width": 2, "stroke-dasharray": dash || "", "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+  el("path", { d: `M${X(0)},${Y(cf[0])}` + cf.map((v, i) => `L${X(i)},${Y(v)}`).join("") + act.slice().reverse().map((v, k) => `L${X(act.length - 1 - k)},${Y(v)}`).join("") + "Z",
+    fill: css("--gold"), opacity: .10 }, svg);
+  line(cf, css("--muted"), "5 4"); line(act, css("--gold"));
+  const endL = (arr, col, txt) => { const tx = el("text", { x: X(arr.length - 1) - 4, y: Y(arr[arr.length - 1]) - 7, "text-anchor": "end", fill: css("--text-2"), "font-size": 11, "font-family": "JetBrains Mono" }, svg); tx.textContent = txt; };
+  endL(cf, css("--muted"), "frontier-only " + fmt$(cf[cf.length - 1])); endL(act, css("--gold"), "Kadı " + fmt$(act[act.length - 1]));
+  const vline = el("line", { y1: f.t, y2: f.t + ph, stroke: css("--text-2"), "stroke-width": 1, opacity: 0 }, svg);
+  const d1 = el("circle", { r: 4.5, fill: css("--gold"), stroke: css("--surface"), "stroke-width": 2, opacity: 0 }, svg);
+  const d2 = el("circle", { r: 4.5, fill: css("--muted"), stroke: css("--surface"), "stroke-width": 2, opacity: 0 }, svg);
+  const hit = el("rect", { x: f.l, y: f.t, width: f.w - f.l - f.r, height: ph, fill: "transparent" }, svg);
+  hit.onmousemove = (e) => {
+    const r = svg.getBoundingClientRect(), sx = (e.clientX - r.left) * f.w / r.width;
+    const i = Math.min(T.length - 1, Math.max(0, Math.floor((sx - f.l) / pw)));
+    [vline].forEach(l => { l.setAttribute("x1", X(i)); l.setAttribute("x2", X(i)); l.setAttribute("opacity", .4); });
+    d1.setAttribute("cx", X(i)); d1.setAttribute("cy", Y(act[i])); d1.setAttribute("opacity", 1);
+    d2.setAttribute("cx", X(i)); d2.setAttribute("cy", Y(cf[i])); d2.setAttribute("opacity", 1);
+    tipAt(box, `<b>${new Date(T[i].t * 1000).toLocaleTimeString()}</b>
+      <div class="row"><span><i style="background:${css("--gold")}"></i>Kadı</span><span class="num">${fmt$(act[i])}</span></div>
+      <div class="row"><span><i style="background:${css("--muted")}"></i>Frontier-only</span><span class="num">${fmt$(cf[i])}</span></div>
+      <div class="row"><span>Saved</span><span class="num">${fmt$(Math.max(0, cf[i] - act[i]))}</span></div>`, e.clientX - r.left, e.clientY - r.top);
+  };
+  hit.onmouseleave = () => { [vline, d1, d2].forEach(x => x.setAttribute("opacity", 0)); box.querySelector(".tip").style.opacity = 0; };
+}
+
+function drawSummary() {
+  if (!S) return; const t = S.totals, n = t.n || 0;
+  $("saved").textContent = fmt$(t.saved || 0);
+  $("spent").textContent = fmt$(t.cost || 0); $("cf").textContent = fmt$(t.counterfactual || 0);
+  $("n").textContent = fmtN(n);
+  const span = t.t1 && t.t0 ? t.t1 - t.t0 : 0;
+  $("nSub").textContent = span > 0 ? `${(n / span).toFixed(1)} / sec over ${Math.round(span)}s` : "—";
+  $("local").textContent = n ? pct((t.memory + t.reflex) / n) : "—";
+  $("localSub").textContent = n ? `${fmtN(t.memory)} memory · ${fmtN(t.reflex)} reflex · ${fmtN(t.oracle)} oracle${t.fallback ? " · " + fmtN(t.fallback) + " fallback" : ""}` : "memory + reflex";
+  $("agree").textContent = t.audits ? pct(t.agreed / t.audits) : "—";
+  $("agreeSub").textContent = t.audits ? `${t.agreed}/${t.audits} random audits matched` : "no audits yet";
+  $("lat").textContent = t.local_latency != null ? `${t.local_latency.toFixed(2)} / ${t.oracle_latency != null ? Math.round(t.oracle_latency) : "—"}` : "—";
+  $("latSub").textContent = t.local_latency && t.oracle_latency ? `mean ms · local is ${Math.round(t.oracle_latency / t.local_latency)}× faster` : "mean ms";
+  const tg = S.questions.map(q => q.target_error).filter(x => x != null);
+  $("oathPill").textContent = tg.length ? `guarantee: ≤ ${pct(Math.max(...tg), 0)} disagreement` : "guarantee: —";
+
+  const rows = S.questions.map(q => {
+    const tot = (q.memory + q.reflex + q.oracle + (q.fallback || 0)) || 1, lr = q.local_rate_recent;
+    let st = `<span class="badge wait">calibrating</span>`;
+    if (q.probation) st = `<span class="badge bad">probation · ${q.probation}</span>`;
+    else if (q.calibrated) st = `<span class="badge ok">sworn</span>`;
+    const esc_ = Object.entries(q.escalations || {}).sort((x, y) => y[1] - x[1]).slice(0, 3)
+      .map(([k, v]) => `${esc(k)} <span class="num">${v}</span>`).join(" · ") || "—";
+    const sh = q.mode === "shadow" && q.shadow && q.shadow.n
+      ? `<div class="why">would decide ${pct(q.shadow.would_be_local, 0)} locally · ${pct(q.shadow.agreement)} agree</div>` : "";
+    return `<tr><td><b>${esc(q.question)}</b><span class="mode ${esc(q.mode)}">${esc(q.mode || "live")}</span>${q.conditional ? '<span class="mode">per-label</span>' : ""}
+      <div class="sub">${esc((q.options || []).join(" · "))}</div>${sh}</td>
+      <td><div class="mix" title="memory ${q.memory} · reflex ${q.reflex} · oracle ${q.oracle} · fallback ${q.fallback || 0}">
+        <span style="width:${100*q.memory/tot}%;background:var(--memory)"></span>
+        <span style="width:${100*q.reflex/tot}%;background:var(--reflex)"></span>
+        <span style="width:${100*q.oracle/tot}%;background:var(--oracle)"></span>
+        <span style="width:${100*(q.fallback || 0)/tot}%;background:var(--fallback)"></span></div></td>
+      <td class="num">${pct(lr)}</td><td class="why">${esc_}</td><td class="num">${pct(q.target_error, 1)}</td><td class="num">${pct(q.alpha_t, 2)}</td>
+      <td class="num">${pct(q.realized_miscoverage, 2)}</td>
+      <td class="num">${q.audits ? pct(q.audit_agreement) + ` <span class="sub">(${q.audits})</span>` : "—"}</td>
+      <td class="num">${fmtN(q.trained_on || 0)}</td><td>${st}</td></tr>`;
+  });
+  const al = S.alerts || [];
+  $("alerts").classList.toggle("on", al.length > 0);
+  $("alerts").innerHTML = al.length ? `<h2>Alerts</h2>` + al.slice(0, 4).map(a => `<div class="alert"><span class="ic">!</span>
+    <span class="num sub">${new Date(a.ts * 1000).toLocaleString()}</span>
+    <span><b>${esc(a.question)}</b> · ${esc(a.kind)}: disagreement ${pct(a.detail.disagreement)} vs target ${pct(a.detail.target_error)} · ${esc(a.detail.action)}</span></div>`).join("") : "";
+  $("courts").innerHTML = rows.join("") || `<tr><td colspan="10" class="empty">No decisions yet</td></tr>`;
+}
+
+function drawFeed(fresh) {
+  if (!feedItems.length) return;
+  $("feed").innerHTML = feedItems.map(d => {
+    let audit = d.audited ? (d.agreed ? ` <span class="badge ok">audit</span>` : ` <span class="badge bad">oracle: ${esc(d.oracle_label)}</span>`) : "";
+    if (d.shadow_label != null) audit = d.agreed ? ` <span class="badge ok">shadow</span>` : ` <span class="badge bad">shadow: ${esc(d.shadow_label)}</span>`;
+    if (d.flagged) audit += ` <span class="badge bad">flagged</span>`;
+    return `<div class="ev ${fresh.has(d.id) && fresh.size <= 5 ? "new" : ""}"><div class="chip ${esc(d.tier)}">${esc(d.tier).toUpperCase()}</div>
+      <div><div class="q">${esc(d.question)} · #${d.id} · <span class="why">${esc(d.reason || "")}</span></div><div class="p">${esc(d.preview || "(input not stored)")}</div></div>
+      <div class="r"><div class="l">${esc(d.label)}</div><div class="sub num">${d.tier === "oracle" ? fmt$(d.cost) : (100*d.confidence).toFixed(0) + "%"}</div>${audit}</div></div>`;
+  }).join("");
+}
+
+function draw() { drawSummary(); drawMix(); drawCost(); }
+
+async function tick() {
+  try {
+    const [s, t, f] = await Promise.all([api("/api/summary"), api("/api/timeline?bins=60"), api("/api/feed?after=0")]);
+    S = s; T = t;
+    const fresh = new Set(f.filter(d => d.id > lastId).map(d => d.id));
+    if (f.length) lastId = Math.max(lastId, f[0].id);
+    feedItems = f; draw(); drawFeed(fresh);
+    $("live").classList.remove("off"); $("liveTxt").textContent = "live";
+  } catch (e) { $("live").classList.add("off"); $("liveTxt").textContent = "offline"; }
+}
+addEventListener("resize", () => { drawMix(); drawCost(); });
+tick(); setInterval(tick, 1000);
+</script>
+</body>
+</html>
