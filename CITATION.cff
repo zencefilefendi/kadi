@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use Kadı in your research, please cite it as below."
+title: "Kadı: Conformally Calibrated Decision Cascades in Front of Frontier Language Models"
+type: software
+authors:
+  - alias: zencefilefendi
+    name: "zencefil efendi"
+repository-code: "https://github.com/zencefilefendi/kadi"
+license: Apache-2.0
+version: 0.2.0
+date-released: 2026-10-10
+keywords:
+  - conformal prediction
+  - adaptive conformal inference
+  - model cascades
+  - LLM routing
+  - knowledge distillation
+  - uncertainty quantification
+abstract: >-
+  Kadı is a three-tier decision cascade (exact memory, local reflex, oracle LLM)
+  whose local tier answers only when a split-conformal prediction set is a
+  singleton, bounding the probability of disagreement with the oracle by a
+  user-chosen alpha, marginally or per label. Calibration uses a random,
+  held-out, continuously re-scored sample of the stream; Adaptive Conformal
+  Inference and a statistically triggered drift breaker handle distribution shift.

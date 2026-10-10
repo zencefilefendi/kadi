@@ -5,12 +5,33 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "kadi"
 version = "0.2.0"
-description = "A calibrated judge in front of your frontier model: routine decisions locally, with a conformal guarantee."
+description = "A calibrated judge in front of your frontier LLM: routine decisions answered locally with a conformal-prediction guarantee."
 readme = "README.md"
 license = { text = "Apache-2.0" }
+authors = [{ name = "zencefil efendi" }]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Security",
+  "Typing :: Typed",
+]
 requires-python = ">=3.11"
 dependencies = []
-keywords = ["llm", "routing", "conformal-prediction", "distillation", "agents", "cost"]
+keywords = ["llm", "routing", "conformal-prediction", "adaptive-conformal-inference", "model-cascade",
+            "distillation", "uncertainty-quantification", "agents", "kvkk", "gdpr"]
+
+[project.urls]
+Homepage = "https://github.com/zencefilefendi/kadi"
+Documentation = "https://github.com/zencefilefendi/kadi/blob/main/docs/THEORY.md"
+Issues = "https://github.com/zencefilefendi/kadi/issues"
+Changelog = "https://github.com/zencefilefendi/kadi/blob/main/CHANGELOG.md"
 
 [project.scripts]
 kadi = "kadi.cli:main"
@@ -19,4 +40,4 @@ kadi = "kadi.cli:main"
 packages = ["kadi"]
 
 [tool.setuptools.package-data]
-kadi = ["dashboard.html"]
+kadi = ["dashboard.html", "py.typed"]
