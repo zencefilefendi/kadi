@@ -4,3 +4,4 @@ __pycache__/
 *.db-shm
 .claude/
 benchmarks/results/*.log
+.venv/

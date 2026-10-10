@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kadi"
-version = "0.3.0"
+version = "0.4.0"
 description = "A calibrated judge in front of your frontier LLM: routine decisions answered locally with a conformal-prediction guarantee."
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -24,6 +24,9 @@ classifiers = [
 ]
 requires-python = ">=3.11"
 dependencies = []
+
+[project.optional-dependencies]
+embed = ["fastembed>=0.9,<1.0"]
 keywords = ["llm", "routing", "conformal-prediction", "adaptive-conformal-inference", "model-cascade",
             "distillation", "uncertainty-quantification", "agents", "kvkk", "gdpr"]
 

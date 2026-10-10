@@ -11,7 +11,7 @@ Everything else is escalated, and every escalation teaches the local judge.
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 ![Python ≥ 3.11](https://img.shields.io/badge/python-%E2%89%A53.11-blue.svg)
 ![Dependencies: 0](https://img.shields.io/badge/dependencies-0-brightgreen.svg)
-![Tests: 74](https://img.shields.io/badge/tests-74-brightgreen.svg)
+![Tests: 77](https://img.shields.io/badge/tests-77-brightgreen.svg)
 
 [Theory](docs/THEORY.md) · [Threat model](docs/THREAT_MODEL.md) · [Türkçe](README.tr.md) · [TypeScript client](clients/typescript)
 
@@ -138,6 +138,15 @@ d.label, d.tier, d.reason, d.prediction_set, d.flagged     # 'bug', 'reflex', 'c
 kadi.teach(route, text, "billing")   # human-reviewed label: trains, never calibrates
 ```
 
+Semantic reflex (optional, `pip install "kadi[embed]"`):
+
+```python
+from kadi.embed import FastEmbedder, HybridFeaturizer, KNNHybridReflex, MULTILINGUAL
+kadi = Kadi(oracle, featurizer=HybridFeaturizer(FastEmbedder(MULTILINGUAL)), reflex=KNNHybridReflex())
+```
+
+In `kadi.toml`, set `reflex = "embed"` (and optionally `embed_model`). Models are cached under `~/.cache/kadi-models`.
+
 Oracles: `AnthropicOracle` (forced enum tool), `OpenAICompatibleOracle` (OpenAI, vLLM, Ollama, llama.cpp, LM Studio; JSON with re-ask), and `FunctionOracle` (any callable: rules, a human review queue, an existing model).
 
 ### As a service, from any language
@@ -215,6 +224,25 @@ The page itself holds no data. On a protected instance it asks for the token and
 
 The reflex here is a hashed n-gram linear model. Stronger reflexes (embeddings) should raise local rates; the calibration layer is model-agnostic.
 
+### Semantic reflex: embeddings + k-NN
+
+The calibration layer is model-agnostic. A stronger reflex can only change *how often* Kadı answers locally, never the bound. The optional `[embed]` extra adds a hybrid reflex: sentence embeddings (fastembed/ONNX, no PyTorch), a k-nearest-neighbour vote over oracle-labelled examples, and the same online logistic model. The k-NN settings (k = 10, temperature 0.02, mix 0.8) were chosen on separate tuning orderings (seeds 100–102, 3,000 examples), not on the evaluation runs.
+
+**Share of decisions answered locally (mean of 3 seeds; error stayed ≤ α in every run):**
+
+| Reflex | Banking77 LTT α=2% / 5% / 10% | CLINC150 LTT α=2% / 5% / 10% | Oracle calls per decision at α=5% (B77 / CLINC) |
+|---|---|---|---|
+| hashed n-grams (core, zero-dep) | 47.0% / 63.9% / 74.4% | 69.8% / 79.5% / 85.4% | 0.39 / 0.25 |
+| + multilingual MiniLM + k-NN | 54.5% / 70.7% / 82.1% | 76.1% / 81.9% / 88.6% | 0.33 / 0.22 |
+| **+ bge-small-en + k-NN** | **61.2% / 79.6% / 89.3%** | **80.3% / 89.8% / 94.1%** | **0.25 / 0.15** |
+
+- **Every run held the bound:** 126 of 126 (hashed 54, bge 36, MiniLM 36), checked per seed.
+- **At α = 5%, the English bge reflex cuts oracle calls by 36% (Banking77) and 40% (CLINC150)** compared with the zero-dependency reflex, while realised error stays at 2.1–3.2%.
+- **LTT kept at least as many decisions local as conformal in 16 of 18 configurations.** The two exceptions (MiniLM on CLINC150 at α = 5% and 10%) are within one standard deviation.
+- **The multilingual MiniLM trails bge on these English benchmarks, as expected.** Its purpose is Turkish and 50+ other languages.
+
+Full tables: [hashed](benchmarks/results/RESULTS-labels.md) · [bge + k-NN](benchmarks/results/RESULTS-labels-bge-knn.md) · [MiniLM + k-NN](benchmarks/results/RESULTS-labels-minilm-knn.md).
+
 ## Evaluation (synthetic, reproducible)
 
 `examples/demo.py` uses a 2%-noisy simulated oracle at $0.012 per call, an oracle outage at 30–33% of the stream and a vocabulary drift at 50%. It runs 6,000 tickets through 2 questions with α = 5%.
@@ -245,6 +273,7 @@ kadi/engine.py      cascade, sampling, audits, shadow mode, drift breaker, fallb
 kadi/conformal.py   held-out, re-scored calibration: adaptive conformal (marginal + Mondrian), Learn then Test
 kadi/learner.py     online softmax regression (AdaGrad, sparse) + novelty score
 kadi/features.py    deterministic, bounded hashing featurizer (word + char n-grams)
+kadi/embed.py       optional semantic reflex: fastembed embeddings, hybrid features, k-NN (extra: [embed])
 kadi/redact.py      PII / secret redaction with checksum validation
 kadi/oracles.py     Anthropic / OpenAI-compatible / function oracles, injection-delimited prompts
 kadi/server.py      hardened HTTP API, Divan dashboard, Prometheus
@@ -258,7 +287,8 @@ docs/               theory, threat model
 
 ## Roadmap
 
-- Pluggable reflex models: multilingual sentence embeddings (ONNX), k-NN, small fine-tuned LMs
+- Embedding-distance novelty guard (nearest-neighbour OOD score) alongside the n-gram guard
+- Small fine-tuned LMs as a reflex
 - Postgres ledger and shared state for multi-instance deployments
 - Multi-oracle juries: escalate to a second model when oracles disagree
 - Budget-aware α (spend caps per question per day)

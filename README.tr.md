@@ -140,6 +140,27 @@ Next.js projeleri için tipli TypeScript istemcisi [clients/typescript](clients/
 - **İyi seçilmiş sabit bir eşik rekabetçi olabilir, ama bu ancak doğru eşiği önceden biliyorsanız işe yarar.** Doğru eşik veri setine göre değişir ve garanti taşımaz; τ = 0,5 seçilirse hata sessizce %10–19'a çıkar. Kadı bu çalışma noktasını otomatik olarak ve sertifikayla seçer.
 - **Etiket başına garanti, çok etiketli sorularda ölçeklenmez.** Az etiketli ve nadir etiketin kritik olduğu sorularda kullanın.
 
+### Anlamsal refleks: embedding + k-NN
+
+İsteğe bağlı `[embed]` paketi; cümle embedding'leri, oracle'ın etiketlediği örnekler üzerinden k-en yakın komşu oylaması ve mevcut çevrimiçi modeli birleştiren hibrit bir refleks ekler. Kalibrasyon katmanı modelden bağımsızdır: daha güçlü bir refleks yalnızca **ne kadar sık** yerel karar verildiğini değiştirir, garantiyi asla. Ayarlar, değerlendirme koşularından ayrı bir ayar akışında seçildi.
+
+**Yerelde verilen karar oranı (3 tohum ortalaması; her koşuda hata ≤ α):**
+
+| Refleks | Banking77 LTT α=%2 / %5 / %10 | CLINC150 LTT α=%2 / %5 / %10 |
+|---|---|---|
+| n-gram (çekirdek, sıfır bağımlılık) | %47,0 / %63,9 / %74,4 | %69,8 / %79,5 / %85,4 |
+| + çok dilli MiniLM + k-NN | %54,5 / %70,7 / %82,1 | %76,1 / %81,9 / %88,6 |
+| **+ bge-small-en + k-NN** | **%61,2 / %79,6 / %89,3** | **%80,3 / %89,8 / %94,1** |
+
+- **Garanti 126 koşunun 126'sında tuttu.**
+- **α = %5'te bge reflexi, sıfır bağımlılıklı reflekse göre frontier çağrılarını %36 (Banking77) ve %40 (CLINC150) azalttı.**
+- Çok dilli MiniLM bu İngilizce benchmark'larda bge'nin gerisinde kalıyor. Bu beklenen bir sonuç; MiniLM'in asıl değeri Türkçe ve diğer diller için.
+
+```python
+from kadi.embed import FastEmbedder, HybridFeaturizer, KNNHybridReflex, MULTILINGUAL
+kadi = Kadi(oracle, featurizer=HybridFeaturizer(FastEmbedder(MULTILINGUAL)), reflex=KNNHybridReflex())
+```
+
 ## Değerlendirme (sentetik, tekrarlanabilir)
 
 Demoda simüle oracle %2 gürültülüdür ve çağrı başına $0.012 tutar. Akışın %30–33'ünde bir oracle kesintisi, %50'sinde bir kelime kayması vardır. 6.000 talep, 2 soru, α = %5:

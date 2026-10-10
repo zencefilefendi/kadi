@@ -55,7 +55,23 @@ def summarize(flags_local, flags_err, calls, t0):
             "calls_per_decision": calls / n, "seconds": time.time() - t0}
 
 
-def run_kadi(rows, labels, policy, alpha, seed, audit_rate, oracle_kind, model):
+def make_featurizer(ds, reflex, weight):
+    if reflex == "hashed":
+        return None
+    import embeddings
+    from kadi.embed import HybridFeaturizer
+    return HybridFeaturizer(embeddings.Lookup(ds, reflex), weight=weight)
+
+
+def make_reflex(reflex, knn):
+    if reflex == "hashed" or not knn:
+        return None
+    from kadi.embed import KNNHybridReflex
+    return KNNHybridReflex(**knn) if isinstance(knn, dict) else KNNHybridReflex()
+
+
+def run_kadi(rows, labels, policy, alpha, seed, audit_rate, oracle_kind, model,
+             ds="", reflex="hashed", emb_weight=1.0, knn=False):
     current = {"y": None}
     calls = {"n": 0}
     if oracle_kind == "labels":
@@ -76,7 +92,8 @@ def run_kadi(rows, labels, policy, alpha, seed, audit_rate, oracle_kind, model):
     conditional = policy == "mondrian"
     q = Choice("intent", labels, "Which intent does this customer message express?", target_error=alpha,
                policy="ltt" if policy == "ltt" else "conformal", conditional=conditional)
-    k = Kadi(oracle, db=":memory:", audit_rate=audit_rate, seed=seed, secret=b"bench", store_inputs=False)
+    k = Kadi(oracle, db=":memory:", audit_rate=audit_rate, seed=seed, secret=b"bench", store_inputs=False,
+             featurizer=make_featurizer(ds, reflex, emb_weight), reflex=make_reflex(reflex, knn))
     loc, err = [], []
     t0 = time.time()
     for text, y in rows:
@@ -129,29 +146,42 @@ def main():
     ap.add_argument("--model", default="claude-opus-5-5")
     ap.add_argument("--out", default=os.path.join(HERE, "results"))
     ap.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) - 1))
+    ap.add_argument("--reflex", default="hashed", help="hashed | bge | minilm (embeddings need the [embed] extra)")
+    ap.add_argument("--emb-weight", type=float, default=1.0)
+    ap.add_argument("--knn", action="store_true", help="mix a k-NN vote over embeddings into the reflex")
+    ap.add_argument("--knn-k", type=int, default=10)
+    ap.add_argument("--knn-temp", type=float, default=0.02)
+    ap.add_argument("--knn-mix", type=float, default=0.8)
+    ap.add_argument("--tag", default="", help="suffix for result files")
     a = ap.parse_args()
     if a.oracle == "anthropic" and not os.environ.get("ANTHROPIC_API_KEY"):
         sys.exit("--oracle anthropic needs ANTHROPIC_API_KEY")
 
     os.makedirs(a.out, exist_ok=True)
+    knn_cfg = {"k": a.knn_k, "temperature": a.knn_temp, "mix": a.knn_mix} if a.knn else None
     seeds = [int(x) for x in a.seeds.split(",")]
     results = {"meta": {"oracle": a.oracle, "model": a.model if a.oracle == "anthropic" else None,
+                        "reflex": a.reflex + ("+knn" if a.knn else ""), "emb_weight": a.emb_weight, "knn": knn_cfg,
                         "audit_rate": a.audit_rate, "seeds": seeds, "n": a.n,
                         "dataset_sha256": datasets.digests(), "python": sys.version.split()[0]},
                "runs": []}
     for ds in a.datasets.split(","):
         data = datasets.load(ds)
         labels = sorted({y for _, y in data})
+        if a.reflex != "hashed":
+            import embeddings
+            embeddings.ensure(ds, a.reflex)  # compute once, before the workers start
         cells = []  # (policy, alpha, [futures])
         with ProcessPoolExecutor(max_workers=a.jobs) as pool:
-            if a.oracle == "labels":
+            if a.oracle == "labels" and a.taus:
                 for tau in (float(t) for t in a.taus.split(",")):
                     cells.append((f"threshold@{tau}", None,
                                   [pool.submit(run_threshold, stream(data, sd, a.n), labels, tau) for sd in seeds]))
             for policy in a.policies.split(","):
                 for alpha in (float(x) for x in a.alphas.split(",")):
                     cells.append((policy, alpha, [pool.submit(run_kadi, stream(data, sd, a.n), labels, policy, alpha,
-                                                              sd, a.audit_rate, a.oracle, a.model) for sd in seeds]))
+                                                              sd, a.audit_rate, a.oracle, a.model, ds, a.reflex,
+                                                              a.emb_weight, knn_cfg) for sd in seeds]))
             for policy, alpha, futs in cells:
                 runs = [f.result() for f in futs]
                 results["runs"].append({"dataset": ds, "policy": policy, "alpha": alpha, "seeds": runs})
@@ -161,9 +191,9 @@ def main():
                       f"steady {agg(runs, 'steady_local')[0]:.1%}  error {em:.2%}±{es:.2%}  "
                       f"calls/dec {agg(runs, 'calls_per_decision')[0]:.2f}  ({runs[0]['seconds']:.0f}s/run)",
                       flush=True)
-        with open(os.path.join(a.out, f"results-{a.oracle}.json"), "w") as f:
+        with open(os.path.join(a.out, f"results-{a.oracle}{a.tag}.json"), "w") as f:
             json.dump(results, f, indent=1)
-    write_markdown(results, os.path.join(a.out, f"RESULTS-{a.oracle}.md"))
+    write_markdown(results, os.path.join(a.out, f"RESULTS-{a.oracle}{a.tag}.md"))
 
 
 def write_markdown(results, path):

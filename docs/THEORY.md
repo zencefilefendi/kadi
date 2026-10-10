@@ -156,6 +156,10 @@ the court goes on **probation**: every live decision is escalated for the next $
 - **Limits:** features are capped at 4,000 characters and 2,048 non-zeros per input. This bounds model growth, calibration memory and checkpoint size.
 - **Fit:** a linear model is deliberately simple. It is strong when the decision is lexically signalled (routing, spam, intent, triage). It is weak for decisions that need world knowledge or multi-step reasoning, and there the conformal sets stay wide and Kadı escalates. Escalating is correct behaviour, not a failure.
 
+### 7b. Semantic reflex (optional)
+
+`kadi.embed.KNNHybridReflex` mixes the logistic probabilities with a k-NN vote. The vote takes the $k = 10$ nearest oracle-labelled examples by cosine similarity of L2-normalised sentence embeddings, with weights $\propto \exp(\mathrm{sim}/T)$, $T = 0.02$ and mix $0.8$. Its probabilities are not calibrated, and they do not need to be: the calibration layer (§3–§5) turns any scoring function into a guaranteed decision rule. On Banking77 and CLINC150 the semantic reflex raised the local share at α = 5% under LTT from 63.9% to 79.6% and from 79.5% to 89.8% respectively, with the bound holding in all runs. The novelty guard continues to use only the sparse n-gram block, because a dense embedding has no "unseen" dimensions.
+
 ## 8. What is *not* guaranteed
 
 1. **Correctness.** Kadı bounds disagreement *with the oracle*, not with the truth. Choose an oracle you trust.
@@ -177,7 +181,7 @@ Realised miscoverage is measured on calibration samples, so it includes the drif
 
 ## 10. Public benchmarks
 
-On Banking77 and CLINC150, with gold labels as the oracle, 3 seeds and the full datasets, the empirical risk stayed below α in all 54 runs (18 configurations × 3 seeds, checked per seed). LTT kept more decisions local than conformal at every α. For example, at α = 5% Banking77 gave 63.9% vs. 54.7% and CLINC150 gave 79.5% vs. 74.7%. Mondrian calibration with 77–150 labels rarely becomes certifiable, as expected from §4. See [benchmarks/results/RESULTS-labels.md](../benchmarks/results/RESULTS-labels.md).
+On Banking77 and CLINC150, with gold labels as the oracle, 3 seeds and the full datasets, the empirical risk stayed below α in all 54 runs (18 configurations × 3 seeds, checked per seed). LTT kept more decisions local than conformal at every α. For example, at α = 5% Banking77 gave 63.9% vs. 54.7% and CLINC150 gave 79.5% vs. 74.7%. Mondrian calibration with 77–150 labels rarely becomes certifiable, as expected from §4. With the semantic reflex (bge-small-en or multilingual MiniLM plus k-NN), a further 72 runs again showed no violation, giving 126 of 126 in total. See [benchmarks/results/](../benchmarks/results/).
 
 ## References
 

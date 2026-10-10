@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-10-10
+
+### Added
+- **Semantic reflex** (optional extra `kadi[embed]`): `FastEmbedder` (fastembed/ONNX, multilingual MiniLM by default), `HybridFeaturizer` (hashed n-grams + dense embedding block) and `KNNHybridReflex` (k-NN vote over oracle-labelled examples mixed with the online logistic model). Pluggable via `Kadi(featurizer=..., reflex=...)` or `reflex = "embed"` in `kadi.toml`.
+- Benchmark support for embedding reflexes (`--reflex bge|minilm --knn`), with embeddings pre-computed and cached once per dataset.
+- CI job that tests the semantic reflex with numpy and a toy embedder, without downloading a model.
+
+### Results
+- At α = 5% with LTT, the share of decisions answered locally rose from 63.9% to 79.6% on Banking77 and from 79.5% to 89.8% on CLINC150, cutting oracle calls by 36–40%. The bound held in 126 of 126 benchmark runs.
+
+### Changed
+- The novelty guard measures unseen mass only over the sparse n-gram block (`novelty_limit`), so dense features don't mask out-of-distribution inputs.
+
 ## [0.3.0] — 2026-10-10
 
 ### Added

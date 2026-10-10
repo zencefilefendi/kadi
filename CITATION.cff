@@ -7,7 +7,7 @@ authors:
     name: "zencefil efendi"
 repository-code: "https://github.com/zencefilefendi/kadi"
 license: Apache-2.0
-version: 0.3.0
+version: 0.4.0
 date-released: 2026-10-10
 keywords:
   - conformal prediction

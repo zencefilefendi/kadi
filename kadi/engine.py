@@ -69,9 +69,9 @@ class Decision:
 
 
 class _Brain:
-    def __init__(self, q: Question, memory_size: int):
+    def __init__(self, q: Question, memory_size: int, reflex=OnlineSoftmax):
         self.q = q
-        self.model = OnlineSoftmax(len(q.options))
+        self.model = reflex(len(q.options))
         self.conformal = (LearnThenTest(q.target_error, q.delta) if q.policy == "ltt"
                           else MondrianConformal(len(q.options), q.target_error) if q.conditional
                           else AdaptiveConformal(q.target_error))
@@ -166,7 +166,8 @@ class Kadi:
                  redact_oracle: bool = False, secret: bytes | str | None = None,
                  on_oracle_error: str = "raise", memory_size: int = 50_000,
                  checkpoint_seconds: float = 15.0, probation_length: int = 300,
-                 alert_hook: Callable[[dict], None] | None = None, seed: int | None = None):
+                 alert_hook: Callable[[dict], None] | None = None, seed: int | None = None,
+                 featurizer: Callable[[str], dict[int, float]] | None = None, reflex=None):
         if not 0 <= audit_rate <= 1:
             raise ValueError("audit_rate must be in [0, 1]")
         if on_oracle_error not in ("raise", "best_guess"):
@@ -193,7 +194,10 @@ class Kadi:
         self.checkpoint_seconds = checkpoint_seconds
         self.probation_length = probation_length
         self.alert_hook = alert_hook
-        self.featurize = HashingFeaturizer()
+        self.featurize = featurizer or HashingFeaturizer()
+        self.novelty_limit = getattr(self.featurize, "hashed_dim", None)
+        # reflex factory: callable(n_classes) -> model, plus .from_state(dict) -> model
+        self.reflex = reflex or OnlineSoftmax
         self.rng = random.Random(seed)
         self._brains: dict[str, _Brain] = {}
         self._reg = threading.Lock()
@@ -218,7 +222,7 @@ class Kadi:
             cached = brain.memory.get(key)
             probs = brain.model.predict_proba(x)
             pset = brain.conformal.prediction_set(probs)
-            novel = brain.model.novelty(x) > q.novelty_threshold
+            novel = brain.model.novelty(x, self.novelty_limit) > q.novelty_threshold
             calibrating = not brain.conformal.calibrated
             probation = brain.probation > 0
             if probation and cached is None and q.mode == "live":
@@ -414,13 +418,13 @@ class Kadi:
         with self._reg:
             if q.name in self._brains:
                 return self._brains[q.name]
-            b = _Brain(q, self.memory_size)
+            b = _Brain(q, self.memory_size, self.reflex)
             saved = self.store.load_model(q.name)
             if saved and tuple(saved[0]["options"]) == q.options \
                     and saved[0].get("conditional", False) == q.conditional \
                     and saved[0].get("policy", "conformal") == q.policy:
                 st = saved[1]
-                b.model = OnlineSoftmax.from_state(st["model"])
+                b.model = self.reflex.from_state(st["model"])
                 b.conformal = conformal_from_state(st["conformal"])
                 b.conformal.target = q.target_error
                 b.memory.update(st.get("memory", {}))

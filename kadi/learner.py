@@ -31,10 +31,17 @@ class OnlineSoftmax:
         s = sum(e)
         return [t / s for t in e]
 
-    def novelty(self, x: dict[int, float]) -> float:
-        """Share of the (L2-normalised) input mass on features never trained on.
+    def novelty(self, x: dict[int, float], limit: int | None = None) -> float:
+        """Share of the input mass on features never trained on (only features
+        with index < `limit`, e.g. the sparse part of a hybrid representation).
         1.0 = completely unlike anything seen; used to refuse OOD/adversarial inputs."""
-        return sum(v * v for f, v in x.items() if f not in self.w)
+        tot = unseen = 0.0
+        for f, v in x.items():
+            if limit is None or f < limit:
+                tot += v * v
+                if f not in self.w:
+                    unseen += v * v
+        return unseen / tot if tot else 0.0
 
     def update(self, x: dict[int, float], y: int, weight: float = 1.0) -> None:
         p = self.predict_proba(x)

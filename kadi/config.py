@@ -8,6 +8,8 @@
     redact_oracle = false      # also redact what is sent to the oracle
     on_oracle_error = "best_guess"   # or "raise"
     retention_days = 30
+    reflex = "hashed"          # or "embed": semantic k-NN + embeddings (pip install "kadi[embed]")
+    # embed_model = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
     [server]
     host = "127.0.0.1"
@@ -121,7 +123,14 @@ def build_oracle(o: dict):
 def build_engine(cfg: Config, oracle=None) -> Kadi:
     k = cfg.kadi
     hook_url = _env(cfg.alerts.get("webhook_env", "KADI_WEBHOOK"))
-    engine = Kadi(oracle or build_oracle(cfg.oracle), db=k.get("db", "kadi.db"),
+    featurizer = reflex = None
+    if k.get("reflex", "hashed") == "embed":
+        from .embed import MULTILINGUAL, FastEmbedder, HybridFeaturizer, KNNHybridReflex
+        featurizer = HybridFeaturizer(FastEmbedder(k.get("embed_model", MULTILINGUAL)))
+        reflex = KNNHybridReflex()
+    elif k.get("reflex", "hashed") != "hashed":
+        raise ValueError('kadi.reflex must be "hashed" or "embed"')
+    engine = Kadi(oracle or build_oracle(cfg.oracle), db=k.get("db", "kadi.db"), featurizer=featurizer, reflex=reflex,
                   audit_rate=float(k.get("audit_rate", 0.05)), store_inputs=bool(k.get("store_inputs", True)),
                   redact=bool(k.get("redact", True)), redact_oracle=bool(k.get("redact_oracle", False)),
                   on_oracle_error=k.get("on_oracle_error", "raise"),

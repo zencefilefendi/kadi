@@ -1,0 +1,598 @@
+{
+ "meta": {
+  "oracle": "labels",
+  "model": null,
+  "reflex": "bge+knn",
+  "emb_weight": 1.0,
+  "knn": {
+   "k": 10,
+   "temperature": 0.02,
+   "mix": 0.8
+  },
+  "audit_rate": 0.05,
+  "seeds": [
+   0,
+   1,
+   2
+  ],
+  "n": 0,
+  "dataset_sha256": {
+   "banking77/train.csv": "b06e26ac675513959a63135f11b94ea7786ed02da65db93a5650d8838cbc664b",
+   "banking77/test.csv": "d12d6e3bc4c3103966ae786dc435913c0c563dfa328f5a3646d0e62cfeeb474d",
+   "clinc150/data_full.json": "36923c3705a59e08fe9c3883d8bc2dd966ef93e22cb78ac41171782a698d56e0"
+  },
+  "python": "3.12.14"
+ },
+ "runs": [
+  {
+   "dataset": "banking77",
+   "policy": "conformal",
+   "alpha": 0.02,
+   "seeds": [
+    {
+     "n": 13083,
+     "local": 0.5524726744630436,
+     "steady_local": 0.7818709874656068,
+     "error": 0.0073377665673010775,
+     "steady_error": 0.012687251605013758,
+     "calls_per_decision": 0.47733700221661696,
+     "seconds": 245.02037501335144,
+     "calibrator": {
+      "alpha_t": 0.019499999999999806,
+      "threshold": 0.8905589211409687
+     }
+    },
+    {
+     "n": 13083,
+     "local": 0.5203699457311014,
+     "steady_local": 0.6675328645674106,
+     "error": 0.003286707941603608,
+     "steady_error": 0.004280036686028737,
+     "calls_per_decision": 0.5060765879385462,
+     "seconds": 250.4733488559723,
+     "calibrator": {
+      "alpha_t": 0.02809999999999988,
+      "threshold": 0.8478398697845766
+     }
+    },
+    {
+     "n": 13083,
+     "local": 0.5809065199113354,
+     "steady_local": 0.7583307856924488,
+     "error": 0.008407857525032486,
+     "steady_error": 0.010852950168144299,
+     "calls_per_decision": 0.44859741649468776,
+     "seconds": 230.5289330482483,
+     "calibrator": {
+      "alpha_t": 0.013900000000000136,
+      "threshold": 0.9064736965729325
+     }
+    }
+   ]
+  },
+  {
+   "dataset": "banking77",
+   "policy": "conformal",
+   "alpha": 0.05,
+   "seeds": [
+    {
+     "n": 13083,
+     "local": 0.794389665978751,
+     "steady_local": 0.9009477224090492,
+     "error": 0.03141481311625774,
+     "steady_error": 0.040354631611128094,
+     "calls_per_decision": 0.24787892685163954,
+     "seconds": 135.2825107574463,
+     "calibrator": {
+      "alpha_t": 0.04375000000000024,
+      "threshold": 0.8717771407434071
+     }
+    },
+    {
+     "n": 13083,
+     "local": 0.7469234884965222,
+     "steady_local": 0.9116478141241211,
+     "error": 0.022166169838722004,
+     "steady_error": 0.03301742586365026,
+     "calls_per_decision": 0.2925170068027211,
+     "seconds": 156.28540587425232,
+     "calibrator": {
+      "alpha_t": 0.07525000000000011,
+      "threshold": 0.5880547457255823
+     }
+    },
+    {
+     "n": 13083,
+     "local": 0.7653443399831843,
+     "steady_local": 0.8589116478141241,
+     "error": 0.025758618053963157,
+     "steady_error": 0.02675022928767961,
+     "calls_per_decision": 0.2730260643583276,
+     "seconds": 143.98911213874817,
+     "calibrator": {
+      "alpha_t": 0.04475000000000018,
+      "threshold": 0.866464502683903
+     }
+    }
+   ]
+  },
+  {
+   "dataset": "banking77",
+   "policy": "conformal",
+   "alpha": 0.1,
+   "seeds": [
+    {
+     "n": 13083,
+     "local": 0.8758694489031568,
+     "steady_local": 0.9382451849587282,
+     "error": 0.05335167774975159,
+     "steady_error": 0.05732191990217059,
+     "calls_per_decision": 0.17045020255293128,
+     "seconds": 95.77508187294006,
+     "calibrator": {
+      "alpha_t": 0.0975,
+      "threshold": 0.6039549630969165
+     }
+    },
+    {
+     "n": 13083,
+     "local": 0.8536268439960254,
+     "steady_local": 0.942219504738612,
+     "error": 0.04395016433539708,
+     "steady_error": 0.044481809844084376,
+     "calls_per_decision": 0.19124054116028433,
+     "seconds": 104.09285092353821,
+     "calibrator": {
+      "alpha_t": 0.11550000000000002,
+      "threshold": 0.4599825550755998
+     }
+    },
+    {
+     "n": 13083,
+     "local": 0.8682259420622181,
+     "steady_local": 0.9483338428615102,
+     "error": 0.04899487885041657,
+     "steady_error": 0.05533476001222867,
+     "calls_per_decision": 0.1752656118627226,
+     "seconds": 99.97796702384949,
+     "calibrator": {
+      "alpha_t": 0.10950000000000001,
+      "threshold": 0.5114627266033027
+     }
+    }
+   ]
+  },
+  {
+   "dataset": "banking77",
+   "policy": "ltt",
+   "alpha": 0.02,
+   "seeds": [
+    {
+     "n": 13083,
+     "local": 0.6633799587250631,
+     "steady_local": 0.7503821461326812,
+     "error": 0.0073377665673010775,
+     "steady_error": 0.0077957811066952,
+     "calls_per_decision": 0.3721623480853015,
+     "seconds": 192.25435519218445,
+     "calibrator": {
+      "lambda": 0.8,
+      "delta": 0.05,
+      "min_samples": 149
+     }
+    },
+    {
+     "n": 13083,
+     "local": 0.5529312848735,
+     "steady_local": 0.7039131763986548,
+     "error": 0.0025223572575097455,
+     "steady_error": 0.0036686028737389176,
+     "calls_per_decision": 0.47504395016433537,
+     "seconds": 244.97445130348206,
+     "calibrator": {
+      "lambda": 0.9,
+      "delta": 0.05,
+      "min_samples": 149
+     }
+    },
+    {
+     "n": 13083,
+     "local": 0.6192004891844378,
+     "steady_local": 0.7523693060226231,
+     "error": 0.006191240541160285,
+     "steady_error": 0.00932436563741975,
+     "calls_per_decision": 0.4117557135213636,
+     "seconds": 178.63168478012085,
+     "calibrator": {
+      "lambda": 0.866648,
+      "delta": 0.05,
+      "min_samples": 149
+     }
+    }
+   ]
+  },
+  {
+   "dataset": "banking77",
+   "policy": "ltt",
+   "alpha": 0.05,
+   "seeds": [
+    {
+     "n": 13083,
+     "local": 0.8027210884353742,
+     "steady_local": 0.8971262610822378,
+     "error": 0.0233126958648628,
+     "steady_error": 0.029195964536838887,
+     "calls_per_decision": 0.2397003745318352,
+     "seconds": 135.44170713424683,
+     "calibrator": {
+      "lambda": 0.65,
+      "delta": 0.05,
+      "min_samples": 59
+     }
+    },
+    {
+     "n": 13083,
+     "local": 0.7778032561339142,
+     "steady_local": 0.9017120146744115,
+     "error": 0.016739279981655582,
+     "steady_error": 0.022928767960868235,
+     "calls_per_decision": 0.26255445998624166,
+     "seconds": 141.4284529685974,
+     "calibrator": {
+      "lambda": 0.55,
+      "delta": 0.05,
+      "min_samples": 59
+     }
+    },
+    {
+     "n": 13083,
+     "local": 0.8064664067874341,
+     "steady_local": 0.9076734943442373,
+     "error": 0.024000611480547274,
+     "steady_error": 0.02965453989605625,
+     "calls_per_decision": 0.2336620041274937,
+     "seconds": 120.19692897796631,
+     "calibrator": {
+      "lambda": 0.55,
+      "delta": 0.05,
+      "min_samples": 59
+     }
+    }
+   ]
+  },
+  {
+   "dataset": "banking77",
+   "policy": "ltt",
+   "alpha": 0.1,
+   "seeds": [
+    {
+     "n": 13083,
+     "local": 0.9179851715967285,
+     "steady_local": 0.9914399266279426,
+     "error": 0.0760528930673393,
+     "steady_error": 0.09324365637419749,
+     "calls_per_decision": 0.13139188259573492,
+     "seconds": 85.29396891593933,
+     "calibrator": {
+      "lambda": 0.35,
+      "delta": 0.05,
+      "min_samples": 29
+     }
+    },
+    {
+     "n": 13083,
+     "local": 0.8702132538408622,
+     "steady_local": 0.9642311219810455,
+     "error": 0.048536268439960256,
+     "steady_error": 0.06037908896361969,
+     "calls_per_decision": 0.17450126117862874,
+     "seconds": 96.59866499900818,
+     "calibrator": {
+      "lambda": 0.35,
+      "delta": 0.05,
+      "min_samples": 29
+     }
+    },
+    {
+     "n": 13083,
+     "local": 0.8919972483375372,
+     "steady_local": 0.9601039437480893,
+     "error": 0.05969578842773064,
+     "steady_error": 0.06802201161724243,
+     "calls_per_decision": 0.15172361079263166,
+     "seconds": 72.78421592712402,
+     "calibrator": {
+      "lambda": 0.4,
+      "delta": 0.05,
+      "min_samples": 29
+     }
+    }
+   ]
+  },
+  {
+   "dataset": "clinc150",
+   "policy": "conformal",
+   "alpha": 0.02,
+   "seeds": [
+    {
+     "n": 22500,
+     "local": 0.8264,
+     "steady_local": 0.9056,
+     "error": 0.012577777777777778,
+     "steady_error": 0.013422222222222223,
+     "calls_per_decision": 0.21688888888888888,
+     "seconds": 427.33857107162476,
+     "calibrator": {
+      "alpha_t": 0.028499999999999474,
+      "threshold": 0.6675647854617661
+     }
+    },
+    {
+     "n": 22500,
+     "local": 0.7547555555555555,
+     "steady_local": 0.8984888888888889,
+     "error": 0.008133333333333333,
+     "steady_error": 0.010933333333333333,
+     "calls_per_decision": 0.28324444444444447,
+     "seconds": 548.6483790874481,
+     "calibrator": {
+      "alpha_t": 0.013899999999999408,
+      "threshold": 0.9345248358140616
+     }
+    },
+    {
+     "n": 22500,
+     "local": 0.8010222222222222,
+     "steady_local": 0.9259555555555555,
+     "error": 0.011333333333333334,
+     "steady_error": 0.016444444444444446,
+     "calls_per_decision": 0.2407111111111111,
+     "seconds": 490.46670794487,
+     "calibrator": {
+      "alpha_t": 0.009099999999999487,
+      "threshold": 0.8739257616930117
+     }
+    }
+   ]
+  },
+  {
+   "dataset": "clinc150",
+   "policy": "conformal",
+   "alpha": 0.05,
+   "seeds": [
+    {
+     "n": 22500,
+     "local": 0.9055555555555556,
+     "steady_local": 0.9609777777777778,
+     "error": 0.038533333333333336,
+     "steady_error": 0.037422222222222225,
+     "calls_per_decision": 0.1424,
+     "seconds": 283.3321359157562,
+     "calibrator": {
+      "alpha_t": 0.056250000000000334,
+      "threshold": 0.5097802187568713
+     }
+    },
+    {
+     "n": 22500,
+     "local": 0.8840888888888889,
+     "steady_local": 0.9571555555555555,
+     "error": 0.028844444444444443,
+     "steady_error": 0.031733333333333336,
+     "calls_per_decision": 0.16062222222222222,
+     "seconds": 323.194002866745,
+     "calibrator": {
+      "alpha_t": 0.049750000000000356,
+      "threshold": 0.7337338766122254
+     }
+    },
+    {
+     "n": 22500,
+     "local": 0.8814666666666666,
+     "steady_local": 0.9418666666666666,
+     "error": 0.027155555555555554,
+     "steady_error": 0.02728888888888889,
+     "calls_per_decision": 0.16386666666666666,
+     "seconds": 326.3303282260895,
+     "calibrator": {
+      "alpha_t": 0.055250000000000334,
+      "threshold": 0.4680203678143018
+     }
+    }
+   ]
+  },
+  {
+   "dataset": "clinc150",
+   "policy": "conformal",
+   "alpha": 0.1,
+   "seeds": [
+    {
+     "n": 22500,
+     "local": 0.9030222222222222,
+     "steady_local": 0.9220444444444444,
+     "error": 0.04315555555555556,
+     "steady_error": 0.029155555555555556,
+     "calls_per_decision": 0.1439111111111111,
+     "seconds": 268.8198130130768,
+     "calibrator": {
+      "alpha_t": 0.0975,
+      "threshold": 0.38837550696535983
+     }
+    },
+    {
+     "n": 22500,
+     "local": 0.8972,
+     "steady_local": 0.9285333333333333,
+     "error": 0.03897777777777778,
+     "steady_error": 0.026222222222222223,
+     "calls_per_decision": 0.1484,
+     "seconds": 288.23402094841003,
+     "calibrator": {
+      "alpha_t": 0.0995,
+      "threshold": 0.4092955311654952
+     }
+    },
+    {
+     "n": 22500,
+     "local": 0.8864,
+     "steady_local": 0.9014222222222222,
+     "error": 0.035777777777777776,
+     "steady_error": 0.02231111111111111,
+     "calls_per_decision": 0.1592,
+     "seconds": 296.24063992500305,
+     "calibrator": {
+      "alpha_t": 0.08049999999999999,
+      "threshold": 0.40903944811402315
+     }
+    }
+   ]
+  },
+  {
+   "dataset": "clinc150",
+   "policy": "ltt",
+   "alpha": 0.02,
+   "seeds": [
+    {
+     "n": 22500,
+     "local": 0.7996,
+     "steady_local": 0.8878222222222222,
+     "error": 0.006222222222222222,
+     "steady_error": 0.0072,
+     "calls_per_decision": 0.24284444444444445,
+     "seconds": 487.68122482299805,
+     "calibrator": {
+      "lambda": 0.7,
+      "delta": 0.05,
+      "min_samples": 149
+     }
+    },
+    {
+     "n": 22500,
+     "local": 0.7833777777777777,
+     "steady_local": 0.8963555555555556,
+     "error": 0.005244444444444445,
+     "steady_error": 0.0064,
+     "calls_per_decision": 0.25551111111111113,
+     "seconds": 517.8723330497742,
+     "calibrator": {
+      "lambda": 0.8,
+      "delta": 0.05,
+      "min_samples": 149
+     }
+    },
+    {
+     "n": 22500,
+     "local": 0.8269777777777778,
+     "steady_local": 0.9162666666666667,
+     "error": 0.010088888888888889,
+     "steady_error": 0.012177777777777777,
+     "calls_per_decision": 0.2155111111111111,
+     "seconds": 336.0238080024719,
+     "calibrator": {
+      "lambda": 0.65,
+      "delta": 0.05,
+      "min_samples": 149
+     }
+    }
+   ]
+  },
+  {
+   "dataset": "clinc150",
+   "policy": "ltt",
+   "alpha": 0.05,
+   "seeds": [
+    {
+     "n": 22500,
+     "local": 0.9073333333333333,
+     "steady_local": 0.9638222222222222,
+     "error": 0.03613333333333334,
+     "steady_error": 0.03955555555555555,
+     "calls_per_decision": 0.14084444444444444,
+     "seconds": 272.07303380966187,
+     "calibrator": {
+      "lambda": 0.5,
+      "delta": 0.05,
+      "min_samples": 59
+     }
+    },
+    {
+     "n": 22500,
+     "local": 0.8864888888888889,
+     "steady_local": 0.9518222222222222,
+     "error": 0.026755555555555557,
+     "steady_error": 0.03031111111111111,
+     "calls_per_decision": 0.15795555555555554,
+     "seconds": 289.9747951030731,
+     "calibrator": {
+      "lambda": 0.5,
+      "delta": 0.05,
+      "min_samples": 59
+     }
+    },
+    {
+     "n": 22500,
+     "local": 0.8990222222222222,
+     "steady_local": 0.9443555555555555,
+     "error": 0.03244444444444444,
+     "steady_error": 0.03048888888888889,
+     "calls_per_decision": 0.14706666666666668,
+     "seconds": 270.9483289718628,
+     "calibrator": {
+      "lambda": 0.55,
+      "delta": 0.05,
+      "min_samples": 59
+     }
+    }
+   ]
+  },
+  {
+   "dataset": "clinc150",
+   "policy": "ltt",
+   "alpha": 0.1,
+   "seeds": [
+    {
+     "n": 22500,
+     "local": 0.9417777777777778,
+     "steady_local": 0.9968,
+     "error": 0.06168888888888889,
+     "steady_error": 0.07022222222222223,
+     "calls_per_decision": 0.10835555555555555,
+     "seconds": 215.28971123695374,
+     "calibrator": {
+      "lambda": 0.05,
+      "delta": 0.05,
+      "min_samples": 29
+     }
+    },
+    {
+     "n": 22500,
+     "local": 0.9310666666666667,
+     "steady_local": 0.9863111111111111,
+     "error": 0.055733333333333336,
+     "steady_error": 0.06115555555555555,
+     "calls_per_decision": 0.11542222222222222,
+     "seconds": 232.04458117485046,
+     "calibrator": {
+      "lambda": 0.4,
+      "delta": 0.05,
+      "min_samples": 29
+     }
+    },
+    {
+     "n": 22500,
+     "local": 0.9504,
+     "steady_local": 0.9993777777777778,
+     "error": 0.06826666666666667,
+     "steady_error": 0.0792,
+     "calls_per_decision": 0.09826666666666667,
+     "seconds": 157.12436604499817,
+     "calibrator": {
+      "lambda": 0.05,
+      "delta": 0.05,
+      "min_samples": 29
+     }
+    }
+   ]
+  }
+ ]
+}
