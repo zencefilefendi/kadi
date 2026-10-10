@@ -259,6 +259,7 @@ def make_handler(store: Store, engine=None, token: str | None = None, rate_limit
                 qs_ = engine.questions.values() if engine else []
                 return self._json([{"name": q.name, "options": list(q.options), "mode": q.mode,
                                     "target_error": q.target_error, "conditional": q.conditional,
+                                    "policy": q.policy, "delta": q.delta,
                                     "instructions": q.instructions} for q in qs_])
             if method == "POST" and u.path in ("/api/decide", "/api/decide/batch", "/api/teach"):
                 if engine is None:

@@ -32,6 +32,10 @@ export interface QuestionInfo {
   mode: "live" | "shadow";
   target_error: number;
   conditional: boolean;
+  /** "conformal": bound in expectation · "ltt": bound holds with probability >= 1 - delta */
+  policy: "conformal" | "ltt";
+  delta: number;
+  instructions: string;
 }
 
 /** A question handle whose labels are known at compile time. */

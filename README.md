@@ -84,8 +84,9 @@ A disagreement requires a local answer, and a local answer requires C(x) = {ŷ}.
 ## Quick start
 
 ```bash
-pip install git+https://github.com/zencefilefendi/kadi
-python -m kadi.cli --help        # or simply: kadi --help
+pip install git+https://github.com/zencefilefendi/kadi                       # core: zero dependencies
+pip install "kadi[embed] @ git+https://github.com/zencefilefendi/kadi"       # + semantic reflex (fastembed/ONNX)
+kadi --help
 ```
 
 Live demo: a simulated support desk with an oracle outage and a vocabulary drift, plus the Divan dashboard.
@@ -249,8 +250,8 @@ Full tables: [hashed](benchmarks/results/RESULTS-labels.md) · [bge + k-NN](benc
 
 | | Local | Audited agreement | Realised miscoverage | Spend vs. oracle-only |
 |---|---|---|---|---|
-| `route_ticket`, marginal | 93.4% | 97.3% (216/222) | 6.0% → ACI tightens α<sub>t</sub> to 3.8% | $7.26 vs. $72 |
-| `is_urgent`, per label | 42.6% | 95.3% (81/85) | 4.3% | $41.56 vs. $72 |
+| `route_ticket`, marginal | 94.3% | 99.1% (225/227) | 3.0% | $6.83 vs. $72 |
+| `is_urgent`, per label | 62.6% | 97.8% (134/137) | 3.7% | $28.09 vs. $72 |
 
 Per-label guarantees cost coverage. The data are synthetic and lexically easy, so measure yours with `replay` and shadow mode.
 
@@ -285,14 +286,28 @@ benchmarks/         Banking77 + CLINC150 benchmark (SHA-256-pinned data, baselin
 docs/               theory, threat model
 ```
 
+## Status and known limitations
+
+Kadı v0.4 is feature-complete for single-instance use. What has and has not been validated:
+
+| Area | Status |
+|---|---|
+| Calibration (conformal, Mondrian, LTT) | ✅ unit and simulation tests; bound held in 126/126 public-benchmark runs |
+| Reflex (n-gram, embeddings + k-NN) | ✅ benchmarked on Banking77 and CLINC150 |
+| Service, security controls, ledger | ✅ 77 tests, including an adversarial-review regression suite; CI on Python 3.11–3.13 + Docker |
+| **Real LLM oracle** | ⚠️ `AnthropicOracle` / `OpenAICompatibleOracle` are implemented, but benchmarks used **gold labels** as the oracle. A real-oracle run (`benchmarks/run.py --oracle anthropic`) is the first thing to do with an API key |
+| **Turkish data** | ⚠️ the multilingual model supports Turkish, but no Turkish benchmark has been run yet |
+| Scale-out | ⚠️ single process + SQLite; multi-instance deployments need the Postgres backend on the roadmap |
+| Production traffic | ⚠️ not yet deployed behind a real application. Use replay → shadow → live |
+
 ## Roadmap
 
+- Real-oracle benchmark (Claude) and a Turkish intent benchmark
 - Embedding-distance novelty guard (nearest-neighbour OOD score) alongside the n-gram guard
-- Small fine-tuned LMs as a reflex
 - Postgres ledger and shared state for multi-instance deployments
 - Multi-oracle juries: escalate to a second model when oracles disagree
-- Budget-aware α (spend caps per question per day)
-- OpenTelemetry traces
+- Budget-aware α (spend caps per question per day); conformal risk control for asymmetric costs
+- MCP server so agents can call Kadı as a tool; PyPI release; OpenTelemetry traces
 
 ## Citing
 

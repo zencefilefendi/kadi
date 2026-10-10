@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Documentation
+- README / README.tr: "Status and known limitations" section, refreshed roadmap, `kadi[embed]` install line; the synthetic demo table was re-measured with the current engine.
+- CONTRIBUTING: semantic-reflex development setup and benchmark rules (evaluation seeds 0–2, tuning only on seeds ≥ 100).
+- SECURITY: supported versions updated to 0.4.x.
+
+### Changed
+- `GET /api/questions` (and the TypeScript `QuestionInfo` type) now include `policy`, `delta` and `instructions`.
+
 ## [0.4.0] — 2026-10-10
 
 ### Added

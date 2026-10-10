@@ -65,7 +65,8 @@ Bir ayrışma ancak yerel cevapta mümkündür, yerel cevap da ancak C(x) = {ŷ}
 ## Kurulum ve hızlı başlangıç
 
 ```bash
-pip install git+https://github.com/zencefilefendi/kadi
+pip install git+https://github.com/zencefilefendi/kadi                       # çekirdek: sıfır bağımlılık
+pip install "kadi[embed] @ git+https://github.com/zencefilefendi/kadi"       # + anlamsal refleks (fastembed/ONNX)
 kadi --help
 ```
 
@@ -167,8 +168,8 @@ Demoda simüle oracle %2 gürültülüdür ve çağrı başına $0.012 tutar. Ak
 
 | | Yerel | Denetimde uyuşma | Gerçekleşen kapsamama | Maliyet (yalnız oracle'a karşı) |
 |---|---|---|---|---|
-| `route_ticket`, marjinal | %93,4 | %97,3 | %6,0 → ACI α<sub>t</sub>'yi %3,8'e çeker | $7,26 / $72 |
-| `is_urgent`, etiket başına | %42,6 | %95,3 | %4,3 | $41,56 / $72 |
+| `route_ticket`, marjinal | %94,3 | %99,1 | %3,0 | $6,83 / $72 |
+| `is_urgent`, etiket başına | %62,6 | %97,8 | %3,7 | $28,09 / $72 |
 
 Veri sentetik ve sözcüksel olarak kolaydır. Kendi verinizi `replay` ve gölge modla ölçün.
 
@@ -183,6 +184,20 @@ Bağımsız bir saldırgan gözüyle yapılan inceleme 11 sorun buldu. Hepsi dü
 | Gizlilik | TC kimlik, IBAN, kart, telefon, e-posta ve anahtar maskeleme (kayıtta ve isteğe bağlı olarak oracle'a giderken), anahtarlı HMAC, saklama süresi |
 | Bütünlük | şemaya kilitli çıktı, prompt injection ayraçları, yenilik koruması, sapma kesicisi |
 | Denetlenebilirlik | **kurcalanamaz defter**: her karar bir öncekine HMAC ile zincirlenir; `kadi verify` değiştirilmiş, silinmiş ya da araya eklenmiş satırı bulur; `kadi anchor` zincir başını dışarıda saklamak için verir |
+
+## Durum ve bilinen sınırlar
+
+Kadı v0.4, tek sunuculu kullanım için özellik açısından tamamdır. Neyin doğrulandığı ve neyin doğrulanmadığı:
+
+| Alan | Durum |
+|---|---|
+| Kalibrasyon (conformal, Mondrian, LTT) | ✅ birim ve simülasyon testleri; açık benchmark'ta garanti 126/126 koşuda tuttu |
+| Refleks (n-gram, embedding + k-NN) | ✅ Banking77 ve CLINC150 üzerinde ölçüldü |
+| Servis, güvenlik, defter | ✅ 77 test; CI'da Python 3.11–3.13 ve Docker |
+| **Gerçek LLM oracle** | ⚠️ kod hazır, ama benchmark'larda oracle olarak **gerçek etiketler** kullanıldı. API anahtarıyla yapılacak ilk iş: `benchmarks/run.py --oracle anthropic` |
+| **Türkçe veri** | ⚠️ çok dilli model Türkçeyi destekliyor, ama Türkçe benchmark henüz koşulmadı |
+| Ölçeklenme | ⚠️ tek süreç ve SQLite; çoklu sunucu için Postgres desteği yol haritasında |
+| Canlı trafik | ⚠️ henüz gerçek bir uygulamanın arkasında çalıştırılmadı; sırayla replay → gölge → canlı izlenmeli |
 
 ## Lisans
 

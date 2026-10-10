@@ -16,7 +16,7 @@ d.tier;           // "memory" | "reflex" | "oracle" | "fallback"
 await kadi.teach(route, ticketText, "billing");   // label is type-checked against the options
 
 const results = await kadi.decideBatch([{ question: "route_ticket", text: "..." }]); // max 100
-await kadi.questions();   // [{ name, options, mode, target_error, conditional }]
+await kadi.questions();   // [{ name, options, mode, target_error, conditional, policy, delta, instructions }]
 await kadi.health();      // true | false
 ```
 

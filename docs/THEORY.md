@@ -174,10 +174,10 @@ the court goes on **probation**: every live decision is escalated for the next $
 
 | | Local | Audited agreement | Realised miscoverage | Cost vs. oracle-only |
 |---|---|---|---|---|
-| `route_ticket`, marginal | 93.4% | 97.3% | 6.0% (α<sub>t</sub> → 3.8%) | $7.26 vs. $72 |
-| `is_urgent`, Mondrian | 42.6% | 95.3% | 4.3% (per-label average) | $41.56 vs. $72 |
+| `route_ticket`, marginal | 94.3% | 99.1% | 3.0% | $6.83 vs. $72 |
+| `is_urgent`, Mondrian | 62.6% | 97.8% | 3.7% (per-label average) | $28.09 vs. $72 |
 
-Realised miscoverage is measured on calibration samples, so it includes the drift window. In `route_ticket` it overshoots α by about 1 point, and ACI responds by tightening α<sub>t</sub> to 3.8%; this is the finite-sample behaviour the ACI bound describes. The decision-level disagreement (1 − audited agreement) is lower than the set miscoverage, as Corollary 1 predicts. The data are synthetic and lexically easy. Measure your own traffic with `kadi replay` and shadow mode before drawing conclusions.
+Measured with v0.4. Realised miscoverage is measured on calibration samples, so it includes the outage and drift windows; both stay below α. (An earlier v0.2 run showed 6.0% for `route_ticket` before ACI tightened α<sub>t</sub>, which is the finite-sample behaviour the ACI bound allows.) The decision-level disagreement (1 − audited agreement) is lower than the set miscoverage, as Corollary 1 predicts. The data are synthetic and lexically easy. Measure your own traffic with `kadi replay` and shadow mode before drawing conclusions.
 
 ## 10. Public benchmarks
 

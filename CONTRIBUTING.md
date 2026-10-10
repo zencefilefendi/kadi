@@ -19,7 +19,14 @@ git clone https://github.com/zencefilefendi/kadi && cd kadi
 python -m unittest discover -s tests -v
 python examples/demo.py                  # live dashboard at http://127.0.0.1:8765
 npx -p typescript@5.6.3 tsc --noEmit -p clients/typescript
+
+# optional semantic reflex + benchmarks (Python 3.12 venv; models ~300 MB, cached in ~/.cache/kadi-models)
+uv venv -p 3.12 .venv && uv pip install -p .venv/bin/python -e ".[embed]"
+.venv/bin/python -m unittest discover -s tests
+.venv/bin/python benchmarks/run.py --reflex bge --knn --tag=-bge-knn
 ```
+
+Benchmark numbers in the docs must come from `benchmarks/results/` files committed in the same PR. Tune hyper-parameters only on orderings that are not used for evaluation (seeds ≥ 100); the evaluation seeds are 0, 1 and 2.
 
 ## Pull requests
 
