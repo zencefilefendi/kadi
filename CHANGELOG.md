@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-10-10
+
+Patch release: documentation and API metadata only. No change to calibration, decisions or stored data.
+
 ### Documentation
 - README / README.tr: "Status and known limitations" section, refreshed roadmap, `kadi[embed]` install line; the synthetic demo table was re-measured with the current engine.
 - CONTRIBUTING: semantic-reflex development setup and benchmark rules (evaluation seeds 0–2, tuning only on seeds ≥ 100).
