@@ -84,6 +84,13 @@ class Store:
                 if c not in cols:
                     self.db.execute(f"ALTER TABLE decisions ADD COLUMN {c} {typ}")
         self.db.executescript(SCHEMA)
+        # Rows with id <= chain_start predate the hash chain (v0.1/v0.2 databases).
+        # Any later row without a hash is treated as tampering by verify().
+        if not self.db.execute("SELECT 1 FROM meta WHERE key='chain_start_id'").fetchone():
+            first = self.db.execute("SELECT MIN(id) m FROM decisions WHERE row_hash IS NOT NULL").fetchone()["m"]
+            start = first - 1 if first is not None else \
+                self.db.execute("SELECT COALESCE(MAX(id), 0) m FROM decisions").fetchone()["m"]
+            self.db.execute("INSERT INTO meta VALUES ('chain_start_id', ?)", (str(start),))
 
     # ------------------------------------------------------------- meta
     def secret(self) -> bytes:
@@ -140,10 +147,14 @@ class Store:
         with self.lock:
             a = self.db.execute("SELECT value FROM meta WHERE key='chain_anchor'").fetchone()
             prev = a["value"] if a else GENESIS
+            start = int(self.db.execute("SELECT value FROM meta WHERE key='chain_start_id'").fetchone()["value"])
             cols = ", ".join(("id", "prev_hash", "row_hash") + CHAINED)
             n = 0
-            for r in self.db.execute(f"SELECT {cols} FROM decisions WHERE row_hash IS NOT NULL ORDER BY id"):
+            for r in self.db.execute(f"SELECT {cols} FROM decisions WHERE id > ? ORDER BY id", (start,)):
                 r = dict(r)
+                if r["row_hash"] is None:
+                    return {"ok": False, "rows": n, "first_bad_id": r["id"],
+                            "reason": "unchained row: inserted or stripped of its hash after the chain began"}
                 if r["prev_hash"] != prev:
                     return {"ok": False, "rows": n, "first_bad_id": r["id"],
                             "reason": "broken link: a row before this one was deleted, inserted or altered"}

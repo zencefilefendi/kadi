@@ -7,7 +7,7 @@
 Rutin kararları yerelde verir. Bu kararların oracle ile ne sıklıkla ayrıştığına dağılımdan bağımsız bir üst sınır koyar.<br>
 Geri kalan her şeyi oracle'a yükseltir ve her yükseltmeden öğrenir.
 
-[English](README.md) · [Mühendislik raporu](docs/ENGINEERING.tr.md) · [Teori](docs/THEORY.md) · [Tehdit modeli](docs/THREAT_MODEL.md) · [MCP sunucusu](docs/MCP.md)
+[English](README.md) · [Yol haritası](ROADMAP.md) · [Mühendislik raporu](docs/ENGINEERING.tr.md) · [Teori](docs/THEORY.md) · [Tehdit modeli](docs/THREAT_MODEL.md) · [MCP sunucusu](docs/MCP.md)
 
 </div>
 

@@ -160,6 +160,15 @@ the court goes on **probation**: every live decision is escalated for the next $
 
 `kadi.embed.KNNHybridReflex` mixes the logistic probabilities with a k-NN vote. The vote takes the $k = 10$ nearest oracle-labelled examples by cosine similarity of L2-normalised sentence embeddings, with weights $\propto \exp(\mathrm{sim}/T)$, $T = 0.02$ and mix $0.8$. Its probabilities are not calibrated, and they do not need to be: the calibration layer (§3–§5) turns any scoring function into a guaranteed decision rule. On Banking77 and CLINC150 the semantic reflex raised the local share at α = 5% under LTT from 63.9% to 79.6% and from 79.5% to 89.8% respectively, with the bound holding in all runs. The novelty guard continues to use only the sparse n-gram block, because a dense embedding has no "unseen" dimensions.
 
+## 7c. Known statistical caveats (from the v0.5 expert review)
+
+- **Pointwise in time.** LTT is re-certified after every calibration sample, so "with probability ≥ 1 − δ" holds at each fixed time, not uniformly over the stream. Anytime-valid certification is roadmap P0 #1.
+- **Approximate independence.** Held-out samples are never trained on, but through q̂/λ, ACI and probation they influence which escalations do train the reflex, and the reflex later re-scores them. Theorems 1–2 therefore hold only approximately. Certifying frozen snapshots is roadmap P0 #2.
+- **The drift breaker tests a different quantity.** It tests Pr(wrong | local) with a Wald interval on overlapping windows, while α bounds Pr(local ∧ wrong). A correctly certified court can be put on probation, and false alarms accumulate over time.
+- **ACI on a thinned stream.** T counts calibration samples, not decisions, so the finite-sample ACI bound is loose. Clipping α_t at 0.999 departs from the proof.
+- **Mixed sampling rates.** The calibration window mixes warm-up samples (ρ = 0.25) with live ones (ρ = audit_rate).
+- **Memory answers.** Replayed verdicts are neither calibrated nor audited. With a noisy oracle they disagree with a fresh call about ε of the time, so the bound applies to non-memory decisions.
+
 ## 8. What is *not* guaranteed
 
 1. **Correctness.** Kadı bounds disagreement *with the oracle*, not with the truth. Choose an oracle you trust.

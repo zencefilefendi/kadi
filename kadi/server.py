@@ -159,6 +159,8 @@ class _HTTPError(Exception):
 
 def make_handler(store: Store, engine=None, token: str | None = None, rate_limit_per_minute: int = 1200):
     limiter = _RateLimiter(rate_limit_per_minute)
+    failed_auth = _RateLimiter(max(6, rate_limit_per_minute // 20))  # separate bucket: bad tokens can't
+                                                                       # exhaust legitimate callers' quota
     token_b = token.encode() if token else None
 
     class Handler(BaseHTTPRequestHandler):
@@ -224,7 +226,7 @@ def make_handler(store: Store, engine=None, token: str | None = None, rate_limit
                 raise _HTTPError(415, "content-type must be application/json")
             try:
                 data = json.loads(self.rfile.read(n) or b"{}")
-            except (json.JSONDecodeError, UnicodeDecodeError):
+            except (json.JSONDecodeError, UnicodeDecodeError, RecursionError):
                 raise _HTTPError(400, "invalid JSON")
             if not isinstance(data, dict):
                 raise _HTTPError(400, "body must be a JSON object")
@@ -240,9 +242,15 @@ def make_handler(store: Store, engine=None, token: str | None = None, rate_limit
                 return self._json({"ok": True})
             if not (u.path.startswith("/api/") or u.path == "/metrics"):
                 raise _HTTPError(404, "not found")
-            self._limit()
             self._origin_guard()
-            self._auth()
+            try:
+                self._auth()
+            except _HTTPError:
+                wait = failed_auth.allow(self.client_address[0])
+                if wait:
+                    raise _HTTPError(429, "rate limited", {"retry-after": str(max(1, round(wait)))})
+                raise
+            self._limit()
             try:
                 window = float(arg("window", "0")) or None
                 if method == "GET" and u.path == "/metrics":

@@ -383,7 +383,7 @@ def serve_stdio(server: KadiMCP, stdin=None, stdout=None) -> None:
         else:
             try:
                 out = server.handle(json.loads(raw))
-            except (json.JSONDecodeError, UnicodeDecodeError):
+            except (json.JSONDecodeError, UnicodeDecodeError, RecursionError):
                 out = _err(None, -32700, "parse error")
         if out is not None:
             stdout.write(json.dumps(out, ensure_ascii=False, default=float).encode() + b"\n")

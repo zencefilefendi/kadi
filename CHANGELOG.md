@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Security
+- Fixed from the second security review, each with a regression test (`TestSecurityRegressionsV2`):
+  - **V1:** rows without a hash after the chain start are now reported as tampering.
+  - **V2:** prompt delimiters can no longer be forged; untrusted text is HTML-escaped instead of having tags stripped.
+  - **V3:** deeply nested JSON no longer crashes the MCP or HTTP servers.
+  - **V4:** failed authentications use a separate rate-limit bucket, so bad tokens cannot exhaust legitimate quota.
+
+### Documentation
+- `ROADMAP.md` from the five-engineer review.
+- THEORY §7c lists the known statistical caveats.
+
 ### Documentation
 - `docs/ENGINEERING.md` and `docs/ENGINEERING.tr.md`: an engineering report covering the techniques used and why, all benchmark results (the bound held in 126/126 runs; 75–85% fewer oracle calls at α = 5%), the bugs found and how they were fixed, the verification inventory, and what is still unverified.
 
