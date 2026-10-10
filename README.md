@@ -13,7 +13,7 @@ Everything else is escalated, and every escalation teaches the local judge.
 ![Dependencies: 0](https://img.shields.io/badge/dependencies-0-brightgreen.svg)
 ![Tests: 87](https://img.shields.io/badge/tests-87-brightgreen.svg)
 
-[Theory](docs/THEORY.md) · [Threat model](docs/THREAT_MODEL.md) · [MCP server](docs/MCP.md) · [Türkçe](README.tr.md) · [TypeScript client](clients/typescript)
+[Engineering report](docs/ENGINEERING.md) · [Theory](docs/THEORY.md) · [Threat model](docs/THREAT_MODEL.md) · [MCP server](docs/MCP.md) · [Türkçe](README.tr.md) · [TypeScript client](clients/typescript)
 
 </div>
 

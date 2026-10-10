@@ -4,6 +4,9 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Documentation
+- `docs/ENGINEERING.md` and `docs/ENGINEERING.tr.md`: an engineering report covering the techniques used and why, all benchmark results (the bound held in 126/126 runs; 75–85% fewer oracle calls at α = 5%), the bugs found and how they were fixed, the verification inventory, and what is still unverified.
+
 ## [0.5.0] — 2026-10-10
 
 ### Added
