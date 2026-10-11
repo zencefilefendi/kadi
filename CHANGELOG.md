@@ -4,6 +4,59 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-10-11
+
+Roadmap **P1, evidence**. The engine behaves the same; this release adds the benchmarks that show what it does, plus fixes found while producing them.
+
+### Added
+- **Datasets** (SHA-256 pinned):
+  - MASSIVE 1.1 tr-TR (intent, 60 classes);
+  - OffensEval-2020 Turkish (offensive / not);
+  - Measuring Hate Speech (EN, hateful / not).
+- **Fair baselines in `benchmarks/run.py`.** Both are fitted on the same 500-label prefix:
+  - `tuned`: the loosest threshold meeting α on the prefix;
+  - `deferral`: a learned logistic router.
+- **Ablations** via a private `Kadi(_ablate=...)` switch: `calibrate_on_escalated`, `no_freeze`, `no_novelty`, `no_consistency`, `fixed_sampling`.
+- **Statistics:** bootstrap 95% CIs, Clopper–Pearson upper bounds and per-cell violation counts.
+- **Report generator.** `benchmarks/report.py` writes `REPORT.md` and risk–coverage SVGs from the result files.
+- **Oracles:**
+  - a simulated noisy oracle (`--oracle noisy:<p>`);
+  - real-oracle machinery: a persistent verdict cache (pay once, replay everything), a cost estimate (`--estimate-only`) and self-consistency sampling. See [docs/REAL_ORACLE.md](docs/REAL_ORACLE.md).
+- **Metrics:** each run reports Kadı vs. oracle, Kadı vs. gold and oracle vs. gold.
+- **Reproducibility:** `benchmarks/results/p1/run_all.sh` reproduces the whole matrix.
+
+### Results
+Five datasets, 10 seeds, α ∈ {2, 5, 10}%, two reflexes. See [REPORT.md](benchmarks/results/p1/REPORT.md).
+
+**Validity:**
+- **LTT:** 0/220 runs exceeded α (CP95 ≤ 1.4%).
+- **Conformal:** 26/220 individual runs exceeded α. No cell mean did, which is consistent with its in-expectation guarantee.
+- **Baselines:** the tuned threshold exceeded α in 34/220 runs and the learned deferral in 57/220. On MASSIVE-tr with the n-gram reflex, deferral exceeded α in 10/10 runs.
+
+**Turkish (α = 5%):**
+- MASSIVE-tr: LTT answers 45.3% locally at 1.86% error.
+- OffensEval-TR: LTT 36.4% at 2.35%; conformal 51.3% at 4.35%.
+
+**Ablations:**
+- Calibrating on escalations gives 18% error at α = 5% on binary moderation.
+- Fixed sampling costs 0.6–11.9 points of local share.
+- Frozen versions cost 5–14 points.
+
+### Fixed
+- Background checkpoints could pack a model that was still changing when the served version aliased the live one. State is now deep-copied under the lock, with a regression test.
+- The k-NN reflex rebuilt its vector matrix on every update (quadratic time). It now uses an incrementally grown buffer, with bit-identical results.
+- The benchmark's embedding lookup now handles PII-redacted texts.
+
+### Docs
+- **THEORY §8:** per-run validity is claimed only for LTT; conformal's guarantee is in expectation. This corrects the v0.6 wording ("held in 126/126 runs").
+- **ENGINEERING (EN/TR):** P1 evidence and lessons.
+- **ROADMAP:** P1 status.
+- **README (EN/TR):** new evidence section.
+
+### Not done
+- **Real-LLM-oracle run:** needs an API key; see [docs/REAL_ORACLE.md](docs/REAL_ORACLE.md).
+- **Tasks:** code-review gating and tool selection.
+
 ## [0.6.0] — 2026-10-11
 
 Roadmap **P0**: the guarantee becomes exact and holds at every point in time. Existing databases upgrade in place. Learned models are kept, but certificates are re-issued, because v0.5 calibration samples predate the frozen versions.

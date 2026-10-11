@@ -19,6 +19,7 @@ LLM agents make many small, multiple-choice decisions. A frontier model gets the
 | 0.4.1 | Documentation patch: status and limitations, re-measured demo |
 | 0.5 | MCP server with **agent-as-oracle** (no API key) |
 | 0.5.1 | Second security review (V1–V7 fixed), five-engineer roadmap, statistical caveats documented |
+| 0.7 | **Roadmap P1 (evidence)**: Turkish and moderation benchmarks, fair baselines, ablations, 10-seed statistics with bootstrap CIs and Clopper–Pearson bounds, simulated noisy oracle, real-oracle machinery (verdict cache, cost estimate, self-consistency) |
 | 0.6 | **Roadmap P0**: frozen model versions, anytime-valid LTT, e-detector, δ spending across versions, empty-set rule, adaptive free sampling, binary off-lock checkpoints, distribution renamed `kadi-cascade` |
 
 ## 3. Techniques
@@ -96,6 +97,29 @@ LLM agents make many small, multiple-choice decisions. A frontier model gets the
 | Naive confidence router | 10–19% error with no warning |
 
 Full tables: [benchmarks/results/](../benchmarks/results/). The v0.5 numbers are in the git history (tag `v0.5.1`).
+
+### 4.1b P1 evidence (v0.7): five datasets, fair baselines, ablations
+
+Full report: [benchmarks/results/p1/REPORT.md](../benchmarks/results/p1/REPORT.md).
+
+**Setup.**
+- **Datasets:** five, in two languages. Banking77, CLINC150, MASSIVE tr-TR, OffensEval-2020 TR, Measuring Hate Speech.
+- **Grid:** 10 seeds, α ∈ {2, 5, 10}%, two reflexes.
+- **Baselines:** tuned threshold and learned deferral, fitted on the same 500-label prefix.
+
+| Method | Promise | Runs above α | Cells with mean above α |
+|---|---|---|---|
+| Kadı LTT | risk ≤ α w.p. ≥ 95%, at all times | **0/220** (CP95 ≤ 1.4%) | **0/22** |
+| Kadı conformal | E[risk] ≤ α | 26/220 | **0/22** |
+| tuned threshold | none | 34/220 | 3/22 |
+| learned deferral | none | 57/220 | 4/22 |
+
+**What this shows.**
+- **Each Kadı policy keeps exactly its own promise.** The uncalibrated baselines are excellent on some datasets and fail silently on others. MASSIVE-tr with the n-gram reflex: learned deferral exceeded α in 10/10 runs.
+- **Ablations reproduce the v0.1 selection-bias bug** (calibrate on escalations). On binary moderation it yields 18% error at α = 5%; on the intent tasks it is harmlessly conservative.
+- **Free, adaptive sampling** is worth 0.6–11.9 points of local share (median 7).
+- **Frozen versions** cost 5–14 points, with no violation observed without them. They buy provability, not an observed fix.
+- **With a 3%-noisy oracle**, Kadı stays within α of the oracle, and its error against gold sits at the noise floor.
 
 ### 4.2 Simulated support desk (`examples/demo.py`)
 
@@ -182,7 +206,14 @@ The remaining gap is the honest price of a guarantee that holds exactly and at e
 | Write | inside the lock | 1.71 s, outside the lock |
 | Load | — | 0.75 s |
 
-### 5.6 Smaller lessons
+### 5.6 Bugs found while producing the P1 evidence
+
+- **Benchmark redaction mismatch.** Kadı redacts PII before featurising, so a Turkish tweet containing a phone number reached the embedding lookup as `<PHONE>`. The benchmark's pre-computed table was keyed by raw text, and the run crashed. It never showed up on Banking77/CLINC150, which contain no PII. Fix: unknown texts are embedded on the fly with the same model.
+- **Quadratic k-NN rebuild.** The live k-NN model re-stacked its whole vector matrix after every update, so baselines took 400–480 s per run. Fix: an incrementally grown buffer. Results are bit-identical (difference 0.0); frozen snapshots copy the matrix.
+- **Mutable references in checkpoint jobs.** In the `no_freeze` ablation the served model *is* the live model, so the background writer packed an object that was changing ("dictionary changed size during iteration"). Calibrator states were also handed over by reference. Fix: version models that alias live are packed from the live snapshot, and all state is deep-copied under the lock. A regression test covers it.
+- **Conformal's per-run behaviour.** ACI steers realised miscoverage *towards* α, so on hard binary tasks about 12% of individual runs end slightly above α while every cell mean stays below. Earlier docs stated "the bound held in every run" without separating the two policies. Now: LTT gives per-run, time-uniform guarantees; conformal gives guarantees in expectation.
+
+### 5.7 Smaller lessons
 
 - **A drift test that never tripped.** When the oracle flipped its labels, Kadı relearned within about 40 decisions, so the breaker correctly stayed quiet. The test was rewritten to exercise the breaker directly.
 - **Per-label guarantees don't scale to 77–150 labels.** Every label needs its own evidence, so local answers stay near zero. This is documented: use it for questions with few labels.
@@ -193,7 +224,7 @@ The remaining gap is the honest price of a guarantee that holds exactly and at e
 
 | Check | Result |
 |---|---|
-| Unit, integration, security-regression and MCP tests | **101 tests**; 2 numpy-only tests are skipped on the stdlib-only interpreter |
+| Unit, integration, security-regression, MCP and benchmark-machinery tests | **108 tests**; 2 numpy-only tests are skipped on the stdlib-only interpreter |
 | Time-uniform LTT validity | Simulation: 200 streams × 1,000 samples. The fraction of streams in which the certified threshold *ever* had risk > α stays within δ (+0.03 tolerance) |
 | Exact certification time | Certifies after exactly `min_samples` clean samples (74 at α = δ = 5%), never earlier |
 | δ spending | Σ_v δ_v < δ, checked numerically |
@@ -209,7 +240,7 @@ The remaining gap is the honest price of a guarantee that holds exactly and at e
 | Gap | How to close it |
 |---|---|
 | Benchmarks used **gold labels**, not a real LLM, as the oracle | `python benchmarks/run.py --oracle anthropic --n 2000` with an API key |
-| No **Turkish** benchmark | Run a Turkish intent dataset with the multilingual reflex |
+| Code-review gating and agent tool-selection tasks | Build or find suitable public datasets |
 | Not exercised against a **real MCP client** (Claude Code / Desktop) | `claude mcp add kadi -- kadi mcp` on a project with repetitive classification work |
 | Single process; SQLite + snapshot side files | Postgres backend (roadmap) |
 | No production traffic yet | Replay → shadow → live on a real application |
@@ -217,7 +248,9 @@ The remaining gap is the honest price of a guarantee that holds exactly and at e
 ## 8. Reproducing everything
 
 ```bash
-python -m unittest discover -s tests                         # 101 tests
+python -m unittest discover -s tests                         # 108 tests
+bash benchmarks/results/p1/run_all.sh                        # P1 evidence matrix (hours; needs [embed] + pyarrow)
+python benchmarks/report.py benchmarks/results/p1            # REPORT.md + risk-coverage SVGs
 python examples/demo.py                                      # demo + dashboard on :8765
 python benchmarks/run.py                                     # hashed reflex, all policies (~3.5 MB download, SHA-256 verified)
 uv venv -p 3.12 .venv && uv pip install -p .venv/bin/python -e ".[embed]"

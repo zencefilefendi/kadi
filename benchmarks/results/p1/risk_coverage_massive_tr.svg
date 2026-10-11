@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" font-family="system-ui, sans-serif" font-size="11">
+<rect width="640" height="400" fill="#fcfcfb"/>
+<line x1="56" x2="460" y1="356.0" y2="356.0" stroke="#e2e0da"/>
+<text x="50" y="360.0" text-anchor="end" fill="#52514e">0%</text>
+<line x1="56" x2="460" y1="289.6" y2="289.6" stroke="#e2e0da"/>
+<text x="50" y="293.6" text-anchor="end" fill="#52514e">20%</text>
+<line x1="56" x2="460" y1="223.2" y2="223.2" stroke="#e2e0da"/>
+<text x="50" y="227.2" text-anchor="end" fill="#52514e">40%</text>
+<line x1="56" x2="460" y1="156.8" y2="156.8" stroke="#e2e0da"/>
+<text x="50" y="160.8" text-anchor="end" fill="#52514e">60%</text>
+<line x1="56" x2="460" y1="90.4" y2="90.4" stroke="#e2e0da"/>
+<text x="50" y="94.4" text-anchor="end" fill="#52514e">80%</text>
+<line x1="56" x2="460" y1="24.0" y2="24.0" stroke="#e2e0da"/>
+<text x="50" y="28.0" text-anchor="end" fill="#52514e">100%</text>
+<text x="56.0" y="372" text-anchor="middle" fill="#52514e">0.0%</text>
+<text x="157.0" y="372" text-anchor="middle" fill="#52514e">4.9%</text>
+<text x="258.0" y="372" text-anchor="middle" fill="#52514e">9.8%</text>
+<text x="359.0" y="372" text-anchor="middle" fill="#52514e">14.8%</text>
+<text x="460.0" y="372" text-anchor="middle" fill="#52514e">19.7%</text>
+<line x1="97.1" x2="97.1" y1="24" y2="356" stroke="#8a8880" stroke-dasharray="3 4"/><text x="100.1" y="34" fill="#8a8880">α=2%</text>
+<line x1="158.6" x2="158.6" y1="24" y2="356" stroke="#8a8880" stroke-dasharray="3 4"/><text x="161.6" y="34" fill="#8a8880">α=5%</text>
+<line x1="261.3" x2="261.3" y1="24" y2="356" stroke="#8a8880" stroke-dasharray="3 4"/><text x="264.3" y="34" fill="#8a8880">α=10%</text>
+<text x="258" y="392" text-anchor="middle" fill="#0b0b0b">realised disagreement with the oracle</text>
+<text x="14" y="190" transform="rotate(-90 14 190)" text-anchor="middle" fill="#0b0b0b">share answered locally</text>
+<path d="M61.2,271.7 L73.7,228.3 L106.3,186.0" fill="none" stroke="#2a78d6" stroke-width="2"/>
+<circle cx="61.2" cy="271.7" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>Kadı conformal · hashed · α=0.02 · local 25.4% · err 0.25%</title></circle>
+<circle cx="73.7" cy="228.3" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>Kadı conformal · hashed · α=0.05 · local 38.5% · err 0.86%</title></circle>
+<circle cx="106.3" cy="186.0" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>Kadı conformal · hashed · α=0.1 · local 51.2% · err 2.45%</title></circle>
+<line x1="472" x2="490" y1="30" y2="30" stroke="#2a78d6" stroke-width="2"/><text x="496" y="34" fill="#0b0b0b">Kadı conformal</text>
+<path d="M59.2,294.9 L68.1,258.2 L102.4,207.2" fill="none" stroke="#2a78d6" stroke-width="2" stroke-dasharray="6 3"/>
+<circle cx="59.2" cy="294.9" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>Kadı conformal · minilm+knn · α=0.02 · local 18.4% · err 0.16%</title></circle>
+<circle cx="68.1" cy="258.2" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>Kadı conformal · minilm+knn · α=0.05 · local 29.5% · err 0.59%</title></circle>
+<circle cx="102.4" cy="207.2" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>Kadı conformal · minilm+knn · α=0.1 · local 44.8% · err 2.26%</title></circle>
+<line x1="472" x2="490" y1="48" y2="48" stroke="#2a78d6" stroke-width="2" stroke-dasharray="6 3"/><text x="496" y="52" fill="#0b0b0b">Kadı conformal · minilm+knn</text>
+<path d="M68.7,257.1 L94.2,205.5 L146.5,163.5" fill="none" stroke="#eb6834" stroke-width="2"/>
+<circle cx="68.7" cy="257.1" r="4.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>Kadı LTT (time-uniform) · hashed · α=0.02 · local 29.8% · err 0.62%</title></circle>
+<circle cx="94.2" cy="205.5" r="4.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>Kadı LTT (time-uniform) · hashed · α=0.05 · local 45.3% · err 1.86%</title></circle>
+<circle cx="146.5" cy="163.5" r="4.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>Kadı LTT (time-uniform) · hashed · α=0.1 · local 58.0% · err 4.41%</title></circle>
+<line x1="472" x2="490" y1="66" y2="66" stroke="#eb6834" stroke-width="2"/><text x="496" y="70" fill="#0b0b0b">Kadı LTT</text>
+<path d="M70.2,265.5 L98.9,213.6 L152.7,177.1" fill="none" stroke="#eb6834" stroke-width="2" stroke-dasharray="6 3"/>
+<circle cx="70.2" cy="265.5" r="4.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>Kadı LTT (time-uniform) · minilm+knn · α=0.02 · local 27.3% · err 0.69%</title></circle>
+<circle cx="98.9" cy="213.6" r="4.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>Kadı LTT (time-uniform) · minilm+knn · α=0.05 · local 42.9% · err 2.09%</title></circle>
+<circle cx="152.7" cy="177.1" r="4.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>Kadı LTT (time-uniform) · minilm+knn · α=0.1 · local 53.9% · err 4.71%</title></circle>
+<line x1="472" x2="490" y1="84" y2="84" stroke="#eb6834" stroke-width="2" stroke-dasharray="6 3"/><text x="496" y="88" fill="#0b0b0b">Kadı LTT · minilm+knn</text>
+<path d="M118.9,158.9 L187.2,125.8 L281.5,101.1" fill="none" stroke="#1baf7a" stroke-width="2"/>
+<circle cx="118.9" cy="158.9" r="4.5" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"><title>tuned threshold (no guarantee) · hashed · α=0.02 · local 59.4% · err 3.06%</title></circle>
+<circle cx="187.2" cy="125.8" r="4.5" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"><title>tuned threshold (no guarantee) · hashed · α=0.05 · local 69.3% · err 6.39%</title></circle>
+<circle cx="281.5" cy="101.1" r="4.5" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"><title>tuned threshold (no guarantee) · hashed · α=0.1 · local 76.8% · err 10.99%</title></circle>
+<line x1="472" x2="490" y1="102" y2="102" stroke="#1baf7a" stroke-width="2"/><text x="496" y="106" fill="#0b0b0b">tuned threshold</text>
+<path d="M70.8,248.1 L85.7,216.3 L115.5,182.5" fill="none" stroke="#1baf7a" stroke-width="2" stroke-dasharray="6 3"/>
+<circle cx="70.8" cy="248.1" r="4.5" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"><title>tuned threshold (no guarantee) · minilm+knn · α=0.02 · local 32.5% · err 0.72%</title></circle>
+<circle cx="85.7" cy="216.3" r="4.5" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"><title>tuned threshold (no guarantee) · minilm+knn · α=0.05 · local 42.1% · err 1.45%</title></circle>
+<circle cx="115.5" cy="182.5" r="4.5" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"><title>tuned threshold (no guarantee) · minilm+knn · α=0.1 · local 52.3% · err 2.90%</title></circle>
+<line x1="472" x2="490" y1="120" y2="120" stroke="#1baf7a" stroke-width="2" stroke-dasharray="6 3"/><text x="496" y="124" fill="#0b0b0b">tuned threshold · minilm+knn</text>
+<path d="M139.0,145.8 L207.7,119.1 L324.7,93.2" fill="none" stroke="#eda100" stroke-width="2"/>
+<circle cx="139.0" cy="145.8" r="4.5" fill="#eda100" stroke="#fcfcfb" stroke-width="2"><title>learned deferral (no guarantee) · hashed · α=0.02 · local 63.3% · err 4.05%</title></circle>
+<circle cx="207.7" cy="119.1" r="4.5" fill="#eda100" stroke="#fcfcfb" stroke-width="2"><title>learned deferral (no guarantee) · hashed · α=0.05 · local 71.3% · err 7.39%</title></circle>
+<circle cx="324.7" cy="93.2" r="4.5" fill="#eda100" stroke="#fcfcfb" stroke-width="2"><title>learned deferral (no guarantee) · hashed · α=0.1 · local 79.2% · err 13.09%</title></circle>
+<line x1="472" x2="490" y1="138" y2="138" stroke="#eda100" stroke-width="2"/><text x="496" y="142" fill="#0b0b0b">learned deferral</text>
+<path d="M99.6,194.4 L136.1,169.7 L243.3,138.0" fill="none" stroke="#eda100" stroke-width="2" stroke-dasharray="6 3"/>
+<circle cx="99.6" cy="194.4" r="4.5" fill="#eda100" stroke="#fcfcfb" stroke-width="2"><title>learned deferral (no guarantee) · minilm+knn · α=0.02 · local 48.7% · err 2.12%</title></circle>
+<circle cx="136.1" cy="169.7" r="4.5" fill="#eda100" stroke="#fcfcfb" stroke-width="2"><title>learned deferral (no guarantee) · minilm+knn · α=0.05 · local 56.1% · err 3.90%</title></circle>
+<circle cx="243.3" cy="138.0" r="4.5" fill="#eda100" stroke="#fcfcfb" stroke-width="2"><title>learned deferral (no guarantee) · minilm+knn · α=0.1 · local 65.7% · err 9.12%</title></circle>
+<line x1="472" x2="490" y1="156" y2="156" stroke="#eda100" stroke-width="2" stroke-dasharray="6 3"/><text x="496" y="160" fill="#0b0b0b">learned deferral · minilm+knn</text>
+<circle cx="127.8" cy="151.3" r="4.5" fill="#4a3aa7" stroke="#fcfcfb" stroke-width="2"><title>fixed threshold τ (no guarantee) · hashed · α=None · local 61.7% · err 3.50%</title></circle>
+<circle cx="423.3" cy="78.2" r="4.5" fill="#4a3aa7" stroke="#fcfcfb" stroke-width="2"><title>fixed threshold τ (no guarantee) · hashed · α=None · local 83.7% · err 17.89%</title></circle>
+<line x1="472" x2="490" y1="174" y2="174" stroke="#4a3aa7" stroke-width="2"/><text x="496" y="178" fill="#0b0b0b">fixed threshold τ</text>
+</svg>

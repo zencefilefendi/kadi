@@ -38,8 +38,29 @@ class Lookup:
 
     def __init__(self, ds: str, key: str):
         import numpy as np
+        self.np = np
+        self.key = key
         self.texts = {t: i for i, t in enumerate(sorted({t for t, _ in datasets.load(ds)}))}
         self.a = np.load(ensure(ds, key), mmap_mode="r")
+        self.extra: dict[str, list[float]] = {}
+        self._model = None
 
     def __call__(self, texts):
-        return [self.a[self.texts[t]].tolist() for t in texts]
+        """Cached vectors for dataset texts; anything else (e.g. text after Kadı's
+        PII redaction replaced a phone number with <PHONE>) is embedded on the
+        fly with the same model, exactly as production would embed it."""
+        out = []
+        for t in texts:
+            i = self.texts.get(t)
+            if i is not None:
+                out.append(self.a[i].tolist())
+                continue
+            if t not in self.extra:
+                if self._model is None:
+                    from fastembed import TextEmbedding
+                    self._model = TextEmbedding(MODELS[self.key], cache_dir=os.path.join(
+                        os.path.expanduser("~"), ".cache", "kadi-models"))
+                v = self.np.asarray(next(iter(self._model.embed([t]))), dtype=self.np.float32)
+                self.extra[t] = (v / (self.np.linalg.norm(v) or 1.0)).tolist()
+            out.append(self.extra[t])
+        return out

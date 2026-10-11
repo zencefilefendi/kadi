@@ -191,6 +191,7 @@ The v0.5 expert review listed six caveats. Status:
 1. **Correctness.** Kadı bounds disagreement *with the oracle*, not with the truth. Choose an oracle you trust.
 2. **Noise floor.** If the oracle disagrees with itself (sampling, temperature, ambiguity) at rate $\varepsilon$, then audits measure disagreement of at least about $\varepsilon$. With $\alpha \lesssim \varepsilon$ Kadı escalates almost everything, which is the only way to honour the bound. Pick $\alpha$ comfortably above $\varepsilon$, for example with `kadi replay`.
 3. **Per-input validity.** The bound is marginal (or per-label with Mondrian). It is never per input.
+3b. **Per-run validity under the conformal policy.** Conformal + ACI bounds the *expected* disagreement, and ACI steers realised miscoverage *towards* α. Individual runs therefore end slightly above α a fair share of the time: 26 of 220 runs in the P1 evidence, with every cell mean below α. Per-run, time-uniform statements are what `ltt` provides (0 of 220).
 4. **Exchangeability.** Real traffic is not exchangeable. ACI, the drift e-detector (with re-certification) and continuous audits are the mitigation, and the dashboard reports the *realised* miscoverage so the claim can be checked.
 5. **Fallback decisions.** When the oracle is down and `on_oracle_error = "best_guess"`, answers carry no guarantee and are flagged as such.
 
@@ -218,6 +219,12 @@ Measured with v0.6. Decision error is estimated from audits as local share × au
 **Mondrian.** It never certifies with 77–150 labels, as expected from §4.
 
 **Results.** At α = 5% with bge-small + k-NN, conformal removes 65% (Banking77) and 79% (CLINC150) of oracle calls; LTT removes 61% and 73%. See [benchmarks/results/](../benchmarks/results/).
+
+**P1 evidence (v0.7).** Across five datasets (including Turkish intent and moderation), 10 seeds, α ∈ {2, 5, 10}% and two reflexes:
+- **LTT:** 0/220 runs exceeded α.
+- **Conformal:** 26/220 individual runs exceeded α, but no cell's mean did (0/22), consistent with a guarantee in expectation.
+- **Fair, uncalibrated baselines** fitted on the same 500-label prefix exceeded α in 91/440 runs, and in 7/44 cell means.
+- **Ablation.** Calibrating on escalations (§5a) drove error to 18% at α = 5% on binary moderation. See [benchmarks/results/p1/REPORT.md](../benchmarks/results/p1/REPORT.md).
 
 ## References
 

@@ -205,6 +205,24 @@ class TestVersions(Base):
         self.assertEqual(k2._brains["v"].live.seen, 0)   # integrity check failed: fresh start, not poison
         k2.close()
 
+    def test_checkpoint_job_holds_no_mutable_references(self):
+        """Regression: the background writer once packed the live model itself
+        (no_freeze ablation) and crashed with 'dictionary changed size'."""
+        q = Choice("cj", ["pos", "neg"], policy="ltt")
+        k = Kadi(self.oracle, db=self.db, seed=0, _ablate={"no_freeze"})
+        self.warm(k, q, 800)
+        b = k._brains["cj"]
+        with b.lock:
+            job = k._snapshot_job(b)
+        self.assertIsNot(job["served"], b.live)
+        before = json.dumps(job["state"], sort_keys=True)
+        for text, y in stream(300, seed=11):          # keep learning and calibrating meanwhile
+            self.truth[text] = y
+            k.decide(q, text)
+        k._write(job)                                  # must not raise
+        self.assertEqual(before, json.dumps(job["state"], sort_keys=True))
+        k.close()
+
     def test_checkpoint_holds_the_lock_only_briefly(self):
         from kadi.learner import OnlineSoftmax
         rng = random.Random(0)

@@ -5,3 +5,4 @@ __pycache__/
 .claude/
 benchmarks/results/*.log
 .venv/
+benchmarks/results/p1/*.log

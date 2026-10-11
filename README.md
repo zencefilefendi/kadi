@@ -11,7 +11,7 @@ Everything else is escalated, and every escalation teaches the local judge.
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 ![Python ≥ 3.11](https://img.shields.io/badge/python-%E2%89%A53.11-blue.svg)
 ![Dependencies: 0](https://img.shields.io/badge/dependencies-0-brightgreen.svg)
-![Tests: 101](https://img.shields.io/badge/tests-101-brightgreen.svg)
+![Tests: 108](https://img.shields.io/badge/tests-108-brightgreen.svg)
 
 [Roadmap](ROADMAP.md) · [Engineering report](docs/ENGINEERING.md) · [Theory](docs/THEORY.md) · [Threat model](docs/THREAT_MODEL.md) · [MCP server](docs/MCP.md) · [Türkçe](README.tr.md) · [TypeScript client](clients/typescript)
 
@@ -239,12 +239,61 @@ The page itself holds no data. On a protected instance it asks for the token and
 
 **What the numbers say:**
 
-- **The bound held in all 126 runs.** That is 2 datasets × 3 reflexes × 2–3 policies × 3 α × 3 seeds, checked per seed, not just on average.
+- **The bound held in all 126 runs.** That is 2 datasets × 3 reflexes × 2–3 policies × 3 α × 3 seeds, checked per seed. On the harder binary tasks in the P1 evidence below, conformal (whose guarantee is in expectation) has individual runs slightly above α while its mean stays below; LTT has none.
 - **At α = 5% the best configuration removes 65% (Banking77) and 79% (CLINC150) of oracle calls.** That is bge + k-NN with the conformal policy; with the time-uniform LTT certificate the figures are 61% and 73%.
 - **The naive confidence router silently makes 10–19% errors.** A hand-tuned threshold can look good, but only in hindsight and without any guarantee. Kadı picks its operating point automatically, with a certificate, and re-certifies as the model and traffic change.
 - **The price of strict validity (v0.6 vs v0.5).** v0.5 calibrated a model that kept learning, and its LTT certificate was only pointwise in time. v0.6 removes both caveats. In exchange it answers less often at the same α: a median of 9.3 points less across the 36 comparable configurations (range −1.5 to +19.7; the strict-α LTT cells lose the most), because every model version must earn its certificate on fresh data. A stronger reflex recovers most of this; more is on the [roadmap](ROADMAP.md) (P3).
 - **Conformal answered locally more often than LTT in 13 of 18 configurations.** Its guarantee is weaker (in expectation), while LTT pays for a high-probability, time-uniform guarantee shared across versions. Pick by the guarantee you need.
 - **Per-label (Mondrian) guarantees don't scale to 77–150 labels.** No label collects enough evidence on its own, so Kadı answers ~0% locally. Use `conditional = true` only for questions with few labels.
+
+## Evidence: five datasets, two languages, fair baselines, ablations (P1)
+
+The roadmap's P1 asked for evidence a reviewer would accept: fair baselines, ablations, ≥ 10 seeds with confidence intervals, more task types and a Turkish benchmark. The full report, with risk–coverage plots, is in [benchmarks/results/p1/REPORT.md](benchmarks/results/p1/REPORT.md), and `benchmarks/results/p1/run_all.sh` reproduces it.
+
+**Datasets**
+
+| Dataset | Language | Task | Items | Labels |
+|---|---|---|---|---|
+| Banking77 | English | intent | 13k | 77 |
+| CLINC150 | English | intent | 22.5k | 150 |
+| **MASSIVE tr-TR** | **Turkish** | intent | 16.5k | 60 |
+| **OffensEval-2020 TR** | **Turkish** | moderation | 35k | 2 |
+| Measuring Hate Speech | English | moderation | 40k | 2 |
+
+**Does each method keep its promise?** 220 runs per method: 22 cells × 10 seeds, α ∈ {2, 5, 10}%, two reflexes.
+
+| Method | What it promises | Runs above α | Cells whose *mean* is above α |
+|---|---|---|---|
+| **Kadı LTT** | risk ≤ α w.p. ≥ 95%, at all times | **0 / 220** (CP95 ≤ 1.4%) | **0 / 22** |
+| **Kadı conformal** | E[risk] ≤ α | 26 / 220 (expected) | **0 / 22** |
+| tuned threshold (500-label prefix, the same budget) | nothing | 34 / 220 | **3 / 22** |
+| learned deferral (FrugalGPT-style scorer) | nothing | 57 / 220 | **4 / 22** |
+
+- **Both Kadı policies kept their own promise.** LTT never exceeded α in any of 220 runs. Conformal's mean stayed ≤ α in every cell, but because ACI steers it *towards* α, about 12% of individual runs land slightly above it, mostly on the binary moderation tasks. If you need per-run guarantees, use LTT.
+- **The uncalibrated baselines sometimes look excellent and sometimes break silently.** On Banking77 with bge, learned deferral answered 78% locally at 1.8% error. On MASSIVE-tr with the n-gram reflex and the same budget it exceeded α in 10/10 runs, at 7.4% error against a 5% target. A threshold tuned on an early, weaker model goes stale as the model learns. You cannot tell in advance which case you are in; that is what the certificate is for.
+
+**Turkish (α = 5%, 10 seeds; local / error):**
+
+| | MASSIVE-tr (intent) | OffensEval-TR (moderation) |
+|---|---|---|
+| Kadı LTT, n-gram | 45.3% / 1.86% | 36.4% / 2.35% |
+| Kadı conformal, n-gram | 38.5% / 0.86% | 51.3% / 4.35% |
+| Kadı LTT, multilingual MiniLM + k-NN | 42.9% / 2.09% | 37.0% / 2.56% |
+
+The zero-dependency n-gram reflex does as well as or better than the multilingual embedding on Turkish. Turkish morphology rewards character n-grams.
+
+**Ablations (α = 5%, 5 seeds; each disables one mechanism):**
+
+| Mechanism removed | Effect |
+|---|---|
+| **random calibration sample** (calibrate on escalations, the v0.1 bug) | On binary moderation the guarantee collapses: error 18.4% (conformal), 6.0% (LTT), 18.7% (Mondrian), with 5/5 runs above α for all three. On the intent tasks it happens to err on the safe side, so the bug can hide on one task and explode on another. |
+| **free, budget-adaptive sampling** (fixed 5% rate instead) | 0.6–11.9 points less local (median 7), e.g. CLINC150 LTT 64.2% → 55.1% |
+| **frozen versions** (the learning model answers, as in v0.5) | +5–14 points local, and no violation was observed here. Frozen versions buy a *provable* guarantee; they did not fix an error these benchmarks exposed. |
+| novelty guard, consistency rule | no measurable effect on these in-distribution benchmarks. They guard against out-of-distribution and adversarial inputs, which these datasets do not contain. |
+
+**Noisy oracle (3% wrong, three-way metrics):** Kadı stays within α of the *oracle*, while its error against gold sits at the oracle's own noise floor of about 3%. With α = 2%, below that floor, conformal escalates almost everything (6% local), exactly as THEORY §8 predicts. The tuned baseline exceeded α in 5/5 runs at α = 2%.
+
+**Still missing:** a real-LLM oracle run (the runbook and cost estimator are in [docs/REAL_ORACLE.md](docs/REAL_ORACLE.md); it needs an API key), plus code-review gating and tool-selection tasks.
 
 ## Evaluation (synthetic, reproducible)
 
@@ -296,12 +345,12 @@ Kadı v0.6 is feature-complete for single-instance use. What has and has not bee
 
 | Area | Status |
 |---|---|
-| Calibration (conformal, Mondrian, anytime-valid LTT, e-detector) | ✅ unit and simulation tests: time-uniform validity of LTT, ARL of the detector, δ spending; the bound held in 126/126 public-benchmark runs |
+| Calibration (conformal, Mondrian, anytime-valid LTT, e-detector) | ✅ simulation tests (time-uniform LTT validity, detector ARL, δ spending); on 5 datasets × 10 seeds: LTT 0/220 runs above α, conformal mean ≤ α in 22/22 cells ([P1 report](benchmarks/results/p1/REPORT.md)) |
 | Reflex (n-gram, embeddings + k-NN), frozen versions | ✅ benchmarked on Banking77 and CLINC150; promotions, restarts and tampered snapshots are tested |
-| Service, security controls, ledger, MCP | ✅ 101 tests, including two adversarial-review regression suites and an MCP stdio end-to-end test; CI on Python 3.11–3.13 + Docker |
+| Service, security controls, ledger, MCP | ✅ 108 tests, including two adversarial-review regression suites and an MCP stdio end-to-end test; CI on Python 3.11–3.13 + Docker |
 | Statistical fine print | ⚠️ exchangeability is still assumed (the detector is the safeguard under shift); the ACI bound is loose; memory answers are not audited. See [THEORY §7c](docs/THEORY.md) |
-| **Real LLM oracle** | ⚠️ `AnthropicOracle` / `OpenAICompatibleOracle` are implemented, but benchmarks used **gold labels** as the oracle. A real-oracle run (`benchmarks/run.py --oracle anthropic`) is the first thing to do with an API key |
-| **Turkish data** | ⚠️ the multilingual model supports Turkish, but no Turkish benchmark has been run yet |
+| **Real LLM oracle** | ⚠️ the oracles, the cached one-pass protocol, cost accounting and self-consistency measurement are implemented and tested, but no real-LLM run has been made yet (it needs an API key; see [docs/REAL_ORACLE.md](docs/REAL_ORACLE.md)). A simulated 3%-noisy oracle is benchmarked |
+| **Turkish data** | ✅ MASSIVE tr-TR (intent) and OffensEval-2020 TR (moderation), 10 seeds each |
 | Scale-out | ⚠️ single process; model snapshots are side files next to SQLite; multi-instance deployments need the Postgres backend on the roadmap |
 | Production traffic | ⚠️ not yet deployed behind a real application. Use replay → shadow → live |
 

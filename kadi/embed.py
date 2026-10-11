@@ -151,7 +151,7 @@ class _KNNHybridModel:
         if not self.labels or not e.size:
             return p
         np = self.np
-        if self._mat is None:
+        if self._mat is None or self._mat.shape[0] != len(self.vecs):
             self._mat = np.vstack(self.vecs)
         sims = self._mat @ e
         kk = min(self.cfg.k, sims.size)
@@ -174,7 +174,21 @@ class _KNNHybridModel:
             self.labels.append(y)
             if len(self.labels) > self.cfg.capacity:
                 del self.vecs[0], self.labels[0]
-            self._mat = None
+                self._mat = None                      # window slid: rebuild once
+            elif self._mat is not None and self._mat.shape[0] == len(self.vecs) - 1:
+                self._mat = self._grow(e)            # amortised O(d) append instead of O(n d) vstack
+
+    def _grow(self, e):
+        """Append one row to the cached matrix, doubling a backing buffer."""
+        np = self.np
+        n = self._mat.shape[0]
+        buf = getattr(self, "_buf", None)
+        if buf is None or buf.shape[0] <= n or buf.shape[1] != e.size or not np.shares_memory(buf, self._mat):
+            buf = np.empty((max(64, 2 * (n + 1)), e.size), dtype=np.float32)
+            buf[:n] = self._mat
+            self._buf = buf
+        buf[n] = e
+        return buf[: n + 1]
 
     # ------------------------------------------------------ snapshots
     def snapshot(self, keep_optimizer: bool = False) -> "_KNNHybridModel":
@@ -184,7 +198,7 @@ class _KNNHybridModel:
         s.np, s.cfg, s.k, s.dim = self.np, self.cfg, self.k, self.dim
         s.lr = self.lr.snapshot(keep_optimizer)
         s.vecs, s.labels = list(self.vecs), list(self.labels)
-        s._mat = self._mat
+        s._mat = None if self._mat is None else self._mat.copy()   # the live buffer keeps growing
         return s
 
     def pack(self, prefix: str, base=None, trainable: bool = True):

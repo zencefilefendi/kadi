@@ -23,6 +23,7 @@ v0.6'dan itibaren kararları yalnızca **dondurulmuş** model sürümleri veriyo
 | 0.4.1 | Belge yaması: durum ve sınırlar, yeniden ölçülen demo |
 | 0.5 | **Ajanın oracle olduğu** MCP sunucusu (API anahtarı gerekmez) |
 | 0.5.1 | İkinci güvenlik denetimi (V1–V7 düzeltildi), beş mühendislik yol haritası, istatistiksel kısıtların belgelenmesi |
+| 0.7 | **Yol haritası P1 (kanıt)**: Türkçe ve içerik denetimi benchmark'ları, adil karşılaştırma yöntemleri, ablasyonlar, bootstrap güven aralıkları ve Clopper–Pearson sınırlarıyla 10 tohumlu istatistik, simüle gürültülü oracle, gerçek oracle altyapısı (karar önbelleği, maliyet tahmini, tutarlılık ölçümü) |
 | 0.6 | **Yol haritası P0**: dondurulmuş model sürümleri, her an geçerli LTT, e-detektör, sürümler arası δ harcaması, boş küme kuralı, uyarlamalı bedava örnekleme, kilit dışı ikili checkpoint, `kadi-cascade` dağıtım adı |
 
 ## 3. Kullanılan teknikler
@@ -100,6 +101,29 @@ v0.6'dan itibaren kararları yalnızca **dondurulmuş** model sürümleri veriyo
 | Saf güven eşiği | Hiçbir uyarı vermeden %10–19 hata |
 
 v0.5 rakamları git geçmişinde, `v0.5.1` etiketinde duruyor.
+
+### 4.1b P1 kanıtı (v0.7): beş veri seti, adil karşılaştırma, ablasyonlar
+
+Tam rapor: [benchmarks/results/p1/REPORT.md](../benchmarks/results/p1/REPORT.md).
+
+**Düzenek.**
+- **Veri setleri:** iki dilde beş veri seti. Banking77, CLINC150, MASSIVE tr-TR, OffensEval-2020 TR, Measuring Hate Speech.
+- **Izgara:** 10 tohum, α ∈ {%2, %5, %10}, iki refleks.
+- **Karşılaştırma yöntemleri:** ayarlanmış eşik ve öğrenilmiş erteleme; ikisi de aynı 500 etiketlik başlangıç dilimiyle ayarlandı.
+
+| Yöntem | Vaadi | Hedefi aşan koşu | Ortalaması hedefi aşan hücre |
+|---|---|---|---|
+| Kadı LTT | %95 olasılıkla ve her an risk ≤ α | **0/220** (CP95 ≤ %1,4) | **0/22** |
+| Kadı conformal | ortalamada risk ≤ α | 26/220 | **0/22** |
+| ayarlanmış eşik | yok | 34/220 | 3/22 |
+| öğrenilmiş erteleme | yok | 57/220 | 4/22 |
+
+**Ne gösteriyor?**
+- **Kadı'nın her politikası tam olarak kendi sözünü tutuyor.** Kalibrasyonsuz yöntemler bazı veri setlerinde çok iyi, bazılarında sessizce bozuk. Örneğin MASSIVE-tr'de n-gram refleksiyle öğrenilmiş erteleme 10 koşunun 10'unda hedefi aştı.
+- **Ablasyonlar v0.1'deki seçim yanlılığı hatasını yeniden üretiyor.** İkili denetim görevinde α = %5'te %18 hata çıkıyor; niyet görevlerinde ise aynı hata zararsız biçimde tutucu kalıyor.
+- **Bedava, uyarlamalı örnekleme** yerel orana 0,6–11,9 puan (medyan 7) katıyor.
+- **Dondurulmuş sürümler** 5–14 puana mal oluyor; dondurma kapatıldığında da ihlal görülmüyor. Kazandırdıkları şey kanıtlanabilirlik, gözlenen bir hatanın önlenmesi değil.
+- **%3 gürültülü oracle'da** Kadı oracle'a göre α içinde kalıyor; gerçek etikete göre hatası gürültü tabanında.
 
 ### 4.2 Simüle destek masası
 
@@ -186,7 +210,14 @@ Kalan fark, tam ve her an geçerli bir garantinin dürüst bedeli. Yol haritası
 | Yazma | kilit altında | 1,71 s, kilit dışında |
 | Yükleme | — | 0,75 s |
 
-### 5.6 Diğer dersler
+### 5.6 P1 kanıtını üretirken bulunan hatalar
+
+- **Benchmark'ta maskeleme uyuşmazlığı.** Kadı özellik çıkarmadan önce kişisel verileri maskeliyor. Telefon numarası içeren bir Türkçe tweet bu yüzden embedding tablosuna `<PHONE>` olarak ulaştı; tablo ise ham metinle eşleştirilmişti ve koşu çöktü. Banking77 ve CLINC150'de kişisel veri olmadığı için bu daha önce hiç görülmemişti. Düzeltme: tabloda olmayan metin aynı modelle anında embed ediliyor.
+- **k-NN matrisinin her adımda yeniden kurulması.** Canlı k-NN modeli her güncellemeden sonra tüm vektör matrisini yeniden kuruyordu; maliyet karesel büyüyor ve karşılaştırma koşuları 400–480 saniye sürüyordu. Düzeltme: artımlı büyüyen bir tampon. Sonuçlar bit düzeyinde aynı (fark 0,0); dondurulmuş anlık görüntüler matrisin kopyasını alıyor.
+- **Checkpoint işlerinde değişebilir referanslar.** `no_freeze` ablasyonunda sunulan model doğrudan canlı modelin kendisi olduğu için, arka plan yazıcısı değişmekte olan bir nesneyi paketlemeye çalışıyordu ("dictionary changed size during iteration"). Kalibratör durumları da referansla aktarılıyordu. Düzeltme: canlı modelle aynı nesneyi gösteren sürümler canlı anlık görüntüden paketleniyor ve tüm durum kilit altında derin kopyalanıyor. Regresyon testi eklendi.
+- **Conformal'ın koşu başına davranışı.** ACI gerçekleşen kapsamamayı bilerek α'ya *yaklaştırıyor*. Bu yüzden zor ikili görevlerde tek tek koşuların ~%12'si α'nın biraz üstünde bitiyor, ama her hücrenin ortalaması altında kalıyor. Önceki belgeler iki politikayı ayırmadan "garanti her koşuda tuttu" diyordu. Artık ayrım net: LTT koşu başına ve zamandan bağımsız garanti veriyor; conformal ortalamada.
+
+### 5.7 Diğer dersler
 
 - **Hiç tetiklenmeyen sapma testi.** Oracle etiketleri ters çevirdiğinde Kadı ~40 kararda yeniden öğrendi; kesicinin devreye girmemesi doğru davranıştı. Test, kesiciyi doğrudan sınayacak şekilde yeniden yazıldı.
 - **Etiket başına garanti 77–150 etikette ölçeklenmiyor.** Her etiketin kendi kanıtını toplaması gerekiyor. Bu durum belgelendi: az etiketli sorularda kullanılmalı.
@@ -197,7 +228,7 @@ Kalan fark, tam ve her an geçerli bir garantinin dürüst bedeli. Yol haritası
 
 | Kontrol | Sonuç |
 |---|---|
-| Birim, entegrasyon, güvenlik regresyonu ve MCP testleri | **101 test**; numpy gerektiren 2 test standart Python ortamında atlanıyor |
+| Birim, entegrasyon, güvenlik regresyonu, MCP ve benchmark altyapısı testleri | **108 test**; numpy gerektiren 2 test standart Python ortamında atlanıyor |
 | LTT'nin zaman boyunca geçerliliği | Simülasyon: 1.000 örneklik 200 akış. Sertifikalı eşiğin riskinin *herhangi bir anda* α'yı aştığı akış oranı δ sınırında (test toleransı +0,03) |
 | Kesin sertifikalanma zamanı | Tam olarak `min_samples` temiz örnekten sonra sertifikalanıyor (α = δ = %5'te 74), asla daha önce değil |
 | δ harcaması | Σ_v δ_v < δ, sayısal olarak doğrulandı |
@@ -213,7 +244,7 @@ Kalan fark, tam ve her an geçerli bir garantinin dürüst bedeli. Yol haritası
 | Eksik | Nasıl kapanır |
 |---|---|
 | Benchmark'larda oracle olarak **gerçek LLM** yerine veri setinin etiketleri kullanıldı | API anahtarıyla `python benchmarks/run.py --oracle anthropic --n 2000` |
-| **Türkçe** benchmark yok | Çok dilli refleksle Türkçe bir niyet veri seti koşmak |
+| Kod inceleme kapısı ve ajan araç seçimi görevleri | Uygun açık veri setlerini bulmak ya da oluşturmak |
 | **Gerçek bir MCP istemcisiyle** (Claude Code/Desktop) denenmedi | Tekrar eden sınıflandırma işi olan bir projede `claude mcp add kadi -- kadi mcp` |
 | Tek süreç; SQLite + anlık görüntü yan dosyaları | Postgres desteği (yol haritasında) |
 | Canlı trafikte çalışmadı | Gerçek bir uygulamada sırasıyla replay → gölge → canlı |
@@ -221,7 +252,9 @@ Kalan fark, tam ve her an geçerli bir garantinin dürüst bedeli. Yol haritası
 ## 8. Her şeyi yeniden üretmek
 
 ```bash
-python -m unittest discover -s tests                         # 101 test
+python -m unittest discover -s tests                         # 108 test
+bash benchmarks/results/p1/run_all.sh                        # P1 kanıt matrisi (saatler sürer; [embed] + pyarrow gerekir)
+python benchmarks/report.py benchmarks/results/p1            # REPORT.md + risk–kapsam SVG'leri
 python examples/demo.py                                      # demo + panel, :8765
 python benchmarks/run.py                                     # n-gram refleksi (~3,5 MB indirme, SHA-256 doğrulamalı)
 uv venv -p 3.12 .venv && uv pip install -p .venv/bin/python -e ".[embed]"

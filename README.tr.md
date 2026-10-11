@@ -161,6 +161,45 @@ from kadi.embed import FastEmbedder, HybridFeaturizer, KNNHybridReflex, MULTILIN
 kadi = Kadi(oracle, featurizer=HybridFeaturizer(FastEmbedder(MULTILINGUAL)), reflex=KNNHybridReflex())
 ```
 
+## Kanıt: beş veri seti, iki dil, adil karşılaştırma, ablasyon (P1)
+
+Yol haritasının P1 maddesi, bir hakemin kabul edeceği türden kanıt istiyordu: adil karşılaştırma yöntemleri, ablasyonlar, güven aralıklarıyla en az 10 tohum, yeni görev türleri ve Türkçe benchmark. Risk–kapsam grafikleriyle birlikte tam rapor [benchmarks/results/p1/REPORT.md](benchmarks/results/p1/REPORT.md) dosyasında; `benchmarks/results/p1/run_all.sh` bütün sonuçları baştan üretir.
+
+**Veri setleri:** Banking77 ve CLINC150 (İngilizce niyet), **MASSIVE tr-TR** (Türkçe niyet, 60 sınıf), **OffensEval-2020 TR** (Türkçe içerik denetimi) ve Measuring Hate Speech (İngilizce içerik denetimi).
+
+**Her yöntem verdiği sözü tutuyor mu?** Yöntem başına 220 koşu: 22 hücre × 10 tohum.
+
+| Yöntem | Vaadi | Hedefi aşan koşu | Ortalaması hedefi aşan hücre |
+|---|---|---|---|
+| **Kadı LTT** | %95 olasılıkla ve her an risk ≤ α | **0 / 220** | **0 / 22** |
+| **Kadı conformal** | ortalamada risk ≤ α | 26 / 220 (beklenen) | **0 / 22** |
+| ayarlanmış eşik (aynı 500 etiketlik bütçe) | yok | 34 / 220 | **3 / 22** |
+| öğrenilmiş erteleme (FrugalGPT tarzı) | yok | 57 / 220 | **4 / 22** |
+
+- **Kadı'nın iki politikası da kendi sözünü tuttu.** LTT 220 koşunun hiçbirinde α'yı aşmadı. Conformal'da her hücrenin ortalaması α'nın altında kaldı. Ancak ACI hatayı *bilerek* α'ya yaklaştırdığı için tek tek koşuların yaklaşık %12'si α'nın biraz üstüne çıktı; koşu başına garanti istiyorsanız LTT kullanın.
+- **Garantisiz yöntemler bazen çok iyi görünüyor, bazen sessizce bozuluyor.** Banking77'de bge ile öğrenilmiş erteleme %78 yerel kararı %1,8 hatayla verdi. MASSIVE-tr'de ise (n-gram refleksi, aynı bütçe) 10 koşunun 10'unda hedefi aştı: %5 hedefe karşı %7,4 hata. Hangi durumda olduğunuzu önceden bilemezsiniz; sertifika bunun için var.
+
+**Türkçe sonuçlar** (α = %5, 10 tohum; yerel / hata):
+
+| | MASSIVE-tr (niyet) | OffensEval-TR (denetim) |
+|---|---|---|
+| Kadı LTT, n-gram | %45,3 / %1,86 | %36,4 / %2,35 |
+| Kadı conformal, n-gram | %38,5 / %0,86 | %51,3 / %4,35 |
+| Kadı LTT, çok dilli MiniLM + k-NN | %42,9 / %2,09 | %37,0 / %2,56 |
+
+Sıfır bağımlılıklı n-gram refleksi Türkçede çok dilli embedding kadar, hatta ondan biraz daha iyi sonuç veriyor; Türkçenin eklemeli yapısı harf n-gram'larını ödüllendiriyor.
+
+**Ablasyonlar** (α = %5, 5 tohum):
+
+- **Eski hata geri getirildiğinde** (yalnızca oracle'a gidenlerle kalibrasyon), ikili denetim görevinde garanti çöküyor: conformal'da %18,4, LTT'de %6,0, Mondrian'da %18,7 hata ve hepsinde 5/5 ihlal. Niyet görevlerinde ise aynı hata tesadüfen güvenli yönde kalıyor. Yani bu hata bir görevde gizlenip başka bir görevde patlayabilir.
+- **Bedava, bütçeye göre ayarlanan örnekleme** kapatılınca yerel oran 0,6–11,9 puan (medyan 7) düşüyor.
+- **Dondurulmuş sürümler** kapatılınca yerel oran 5–14 puan artıyor ve bu testlerde ihlal görülmüyor. Dondurmanın kazandırdığı şey *kanıtlanabilir* garanti; bu benchmark'larda gözlenen bir hatayı önlemiyor.
+- **Yenilik koruması ve tutarlılık kuralının** bu veri setlerinde ölçülebilir bir etkisi yok. Bu kurallar dağılım dışı ve saldırgan girdilere karşı var; bu veri setlerinde öyle girdi bulunmuyor.
+
+**Gürültülü oracle** (%3 hatalı): Kadı *oracle'a göre* α içinde kalıyor; gerçek etikete göre hatası ise oracle'ın kendi gürültü tabanında (~%3). α = %2 bu tabanın altında olduğu için conformal neredeyse her şeyi oracle'a gönderiyor (%6 yerel); THEORY §8'in öngördüğü tam olarak bu.
+
+**Hâlâ eksik olanlar:** gerçek bir LLM oracle'ı ile koşu (adımlar ve maliyet tahmini [docs/REAL_ORACLE.md](docs/REAL_ORACLE.md) belgesinde; API anahtarı gerekiyor) ile kod inceleme kapısı ve araç seçimi görevleri.
+
 ## Değerlendirme (sentetik, tekrarlanabilir)
 
 Demoda simüle oracle %2 gürültülüdür ve çağrı başına $0,012 tutar. Akışın %30–33'ünde bir oracle kesintisi, %50'sinde bir kelime kayması vardır. 6.000 talep, 2 soru, α = %5, v0.6:
@@ -190,12 +229,12 @@ Kadı v0.6, tek sunuculu kullanım için özellik açısından tamamdır. Neyin 
 
 | Alan | Durum |
 |---|---|
-| Kalibrasyon (conformal, Mondrian, her an geçerli LTT, e-detektör) | ✅ birim ve simülasyon testleri (LTT'nin zaman boyunca geçerliliği, detektörün ARL'si, δ harcaması); açık benchmark'ta garanti 126/126 koşuda tuttu |
+| Kalibrasyon (conformal, Mondrian, her an geçerli LTT, e-detektör) | ✅ simülasyon testleri; 5 veri seti × 10 tohumda LTT 0/220 koşuda α'yı aştı, conformal'ın ortalaması 22/22 hücrede α'nın altında ([P1 raporu](benchmarks/results/p1/REPORT.md)) |
 | Refleks (n-gram, embedding + k-NN) | ✅ Banking77 ve CLINC150 üzerinde ölçüldü |
-| Servis, güvenlik, defter, MCP, dondurulmuş sürümler | ✅ 101 test (iki güvenlik denetimi regresyon paketi, MCP stdio uçtan uca testi, terfi, yeniden başlatma ve kurcalanmış anlık görüntü testleri dahil); CI'da Python 3.11–3.13 ve Docker |
+| Servis, güvenlik, defter, MCP, dondurulmuş sürümler | ✅ 108 test (iki güvenlik denetimi regresyon paketi, MCP stdio uçtan uca testi, terfi, yeniden başlatma ve kurcalanmış anlık görüntü testleri dahil); CI'da Python 3.11–3.13 ve Docker |
 | İstatistiksel ayrıntılar | ⚠️ Değiştirilebilirlik (exchangeability) hâlâ varsayılıyor; kayma durumunda e-detektör koruma sağlıyor. ACI sınırı gevşek; hafıza cevapları denetlenmiyor. Bkz. [THEORY §7c](docs/THEORY.md) |
-| **Gerçek LLM oracle** | ⚠️ kod hazır, ama benchmark'larda oracle olarak **gerçek etiketler** kullanıldı. API anahtarıyla yapılacak ilk iş: `benchmarks/run.py --oracle anthropic` |
-| **Türkçe veri** | ⚠️ çok dilli model Türkçeyi destekliyor, ama Türkçe benchmark henüz koşulmadı |
+| **Gerçek LLM oracle** | ⚠️ önbellekli tek geçiş protokolü, maliyet hesabı ve oracle tutarlılığı ölçümü yazıldı ve test edildi, ama gerçek bir LLM ile koşu henüz yapılmadı (API anahtarı gerekiyor; bkz. [docs/REAL_ORACLE.md](docs/REAL_ORACLE.md)). %3 gürültülü simüle oracle ile benchmark yapıldı |
+| **Türkçe veri** | ✅ MASSIVE tr-TR (niyet) ve OffensEval-2020 TR (içerik denetimi), 10'ar tohum |
 | Ölçeklenme | ⚠️ tek süreç ve SQLite; çoklu sunucu için Postgres desteği yol haritasında |
 | Canlı trafik | ⚠️ henüz gerçek bir uygulamanın arkasında çalıştırılmadı; sırayla replay → gölge → canlı izlenmeli |
 

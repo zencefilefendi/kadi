@@ -16,6 +16,19 @@ This roadmap comes out of a five-engineer review: statistics, ML, systems, secur
 
 ## P1: evidence (make the claims credible)
 
+> **Status (v0.7.0):** mostly done. See [benchmarks/results/p1/REPORT.md](benchmarks/results/p1/REPORT.md).
+> - ✅ **Baselines:** a tuned threshold and a learned-deferral router (logistic, in the spirit of FrugalGPT and RouteLLM), both fitted on the same 500-label prefix.
+> - ✅ **Ablations:** calibrate-on-escalations, no frozen versions, no novelty guard, no consistency check, fixed sampling.
+> - ✅ **Statistics:** 10 seeds, bootstrap CIs, Clopper–Pearson bounds, risk–coverage plots.
+> - ✅ **Turkish benchmarks:** MASSIVE tr-TR and OffensEval-2020 TR.
+> - ✅ **Moderation:** OffensEval-TR and Measuring Hate Speech (EN).
+> - ✅ **Simulated noisy oracle**, reported with three-way metrics.
+> - ⏳ **Real-oracle run:** the machinery is done (verdict cache, cost estimate, self-consistency; see [docs/REAL_ORACLE.md](docs/REAL_ORACLE.md)). It has not been run, because it needs an API key.
+> - ⏳ Code-review gating and tool-selection tasks.
+> - ⏳ A Turkish support-ticket set.
+> - ⏳ A no-ACI ablation.
+
+
 - **Real LLM oracle runs.** Cache verdicts so one paid pass can replay every configuration. Account cost per 1k decisions. Measure oracle self-consistency ε (k = 5 samples, second model). Report Kadı vs. oracle, oracle vs. gold and Kadı vs. gold separately.
 - **Baselines, ablations and statistics.** Baselines: a threshold tuned on a prefix of the same budget, FrugalGPT- and RouteLLM-style routers. Ablations: calibrating on escalated examples (the §5.1 bug), no re-scoring, no ACI, no novelty guard. Statistics: ≥ 10 seeds, bootstrap CIs, risk–coverage curves.
 - **New task types:** moderation, code-review gating, agent tool selection.

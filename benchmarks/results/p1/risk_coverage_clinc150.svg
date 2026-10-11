@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" font-family="system-ui, sans-serif" font-size="11">
+<rect width="640" height="400" fill="#fcfcfb"/>
+<line x1="56" x2="460" y1="356.0" y2="356.0" stroke="#e2e0da"/>
+<text x="50" y="360.0" text-anchor="end" fill="#52514e">0%</text>
+<line x1="56" x2="460" y1="289.6" y2="289.6" stroke="#e2e0da"/>
+<text x="50" y="293.6" text-anchor="end" fill="#52514e">20%</text>
+<line x1="56" x2="460" y1="223.2" y2="223.2" stroke="#e2e0da"/>
+<text x="50" y="227.2" text-anchor="end" fill="#52514e">40%</text>
+<line x1="56" x2="460" y1="156.8" y2="156.8" stroke="#e2e0da"/>
+<text x="50" y="160.8" text-anchor="end" fill="#52514e">60%</text>
+<line x1="56" x2="460" y1="90.4" y2="90.4" stroke="#e2e0da"/>
+<text x="50" y="94.4" text-anchor="end" fill="#52514e">80%</text>
+<line x1="56" x2="460" y1="24.0" y2="24.0" stroke="#e2e0da"/>
+<text x="50" y="28.0" text-anchor="end" fill="#52514e">100%</text>
+<text x="56.0" y="372" text-anchor="middle" fill="#52514e">0.0%</text>
+<text x="157.0" y="372" text-anchor="middle" fill="#52514e">1.5%</text>
+<text x="258.0" y="372" text-anchor="middle" fill="#52514e">3.0%</text>
+<text x="359.0" y="372" text-anchor="middle" fill="#52514e">4.5%</text>
+<text x="460.0" y="372" text-anchor="middle" fill="#52514e">6.0%</text>
+<line x1="190.7" x2="190.7" y1="24" y2="356" stroke="#8a8880" stroke-dasharray="3 4"/><text x="193.7" y="34" fill="#8a8880">α=2%</text>
+<line x1="392.7" x2="392.7" y1="24" y2="356" stroke="#8a8880" stroke-dasharray="3 4"/><text x="395.7" y="34" fill="#8a8880">α=5%</text>
+<text x="258" y="392" text-anchor="middle" fill="#0b0b0b">realised disagreement with the oracle</text>
+<text x="14" y="190" transform="rotate(-90 14 190)" text-anchor="middle" fill="#0b0b0b">share answered locally</text>
+<circle cx="301.4" cy="72.8" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>Kadı conformal · bge+knn · α=0.05 · local 85.3% · err 3.64%</title></circle>
+<line x1="472" x2="490" y1="30" y2="30" stroke="#2a78d6" stroke-width="2" stroke-dasharray="6 3"/><text x="496" y="34" fill="#0b0b0b">Kadı conformal · bge+knn</text>
+<circle cx="190.1" cy="136.8" r="4.5" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>Kadı conformal · hashed · α=0.05 · local 66.0% · err 1.99%</title></circle>
+<line x1="472" x2="490" y1="48" y2="48" stroke="#2a78d6" stroke-width="2"/><text x="496" y="52" fill="#0b0b0b">Kadı conformal</text>
+<circle cx="161.8" cy="95.8" r="4.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>Kadı LTT (time-uniform) · bge+knn · α=0.05 · local 78.4% · err 1.57%</title></circle>
+<line x1="472" x2="490" y1="66" y2="66" stroke="#eb6834" stroke-width="2" stroke-dasharray="6 3"/><text x="496" y="70" fill="#0b0b0b">Kadı LTT · bge+knn</text>
+<circle cx="164.6" cy="143.0" r="4.5" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>Kadı LTT (time-uniform) · hashed · α=0.05 · local 64.2% · err 1.61%</title></circle>
+<line x1="472" x2="490" y1="84" y2="84" stroke="#eb6834" stroke-width="2"/><text x="496" y="88" fill="#0b0b0b">Kadı LTT</text>
+<circle cx="86.7" cy="96.3" r="4.5" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"><title>tuned threshold (no guarantee) · bge+knn · α=0.05 · local 78.2% · err 0.46%</title></circle>
+<line x1="472" x2="490" y1="102" y2="102" stroke="#1baf7a" stroke-width="2" stroke-dasharray="6 3"/><text x="496" y="106" fill="#0b0b0b">tuned threshold · bge+knn</text>
+<circle cx="246.5" cy="95.4" r="4.5" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"><title>tuned threshold (no guarantee) · hashed · α=0.05 · local 78.5% · err 2.83%</title></circle>
+<line x1="472" x2="490" y1="120" y2="120" stroke="#1baf7a" stroke-width="2"/><text x="496" y="124" fill="#0b0b0b">tuned threshold</text>
+<circle cx="133.1" cy="78.3" r="4.5" fill="#eda100" stroke="#fcfcfb" stroke-width="2"><title>learned deferral (no guarantee) · bge+knn · α=0.05 · local 83.6% · err 1.14%</title></circle>
+<line x1="472" x2="490" y1="138" y2="138" stroke="#eda100" stroke-width="2" stroke-dasharray="6 3"/><text x="496" y="142" fill="#0b0b0b">learned deferral · bge+knn</text>
+<circle cx="300.5" cy="89.4" r="4.5" fill="#eda100" stroke="#fcfcfb" stroke-width="2"><title>learned deferral (no guarantee) · hashed · α=0.05 · local 80.3% · err 3.63%</title></circle>
+<line x1="472" x2="490" y1="156" y2="156" stroke="#eda100" stroke-width="2"/><text x="496" y="160" fill="#0b0b0b">learned deferral</text>
+</svg>

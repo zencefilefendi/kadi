@@ -159,13 +159,19 @@ class _Version:
                 "served_pmax": self.served_pmax, "cal": self.cal.state()}
 
 
+ABLATIONS = frozenset({"calibrate_on_escalated", "no_freeze", "no_novelty", "no_consistency", "fixed_sampling"})
+
+
 class _Brain:
-    def __init__(self, q: Question, memory_size: int, reflex, drift_arl: float):
+    def __init__(self, q: Question, memory_size: int, reflex, drift_arl: float, ablate: frozenset = frozenset()):
         self.q = q
         self.reflex = reflex
+        self.ablate = ablate
         self.live = reflex(len(q.options))
         self.versions_issued = 0
         self.served = _Version(0, self.live.snapshot(), _NoCertificate(), 0)
+        if "no_freeze" in ablate:     # v0.5-style: the learning model itself answers and is calibrated
+            self.served = self.new_version(self.live, 0)
         self.candidate: _Version | None = None
         self.refreeze_floor = 0
         self.seq = 0
@@ -200,6 +206,8 @@ class _Brain:
         return _Version(self.versions_issued, model, cal, seq)
 
     def maybe_freeze(self) -> None:
+        if "no_freeze" in self.ablate:
+            return
         need = max(FREEZE_MIN, FREEZE_GROWTH * self.served.model.seen, self.refreeze_floor)
         if self.candidate is None and self.live.seen >= need:
             self.candidate = self.new_version(self.live.snapshot(), self.seq)
@@ -311,7 +319,8 @@ class Kadi:
                  secret: bytes | str | None = None, on_oracle_error: str = "raise", memory_size: int = 50_000,
                  checkpoint_seconds: float = 15.0, probation_length: int = 300, drift_arl: float = 1000.0,
                  alert_hook: Callable[[dict], None] | None = None, seed: int | None = None,
-                 featurizer: Callable[[str], dict[int, float]] | None = None, reflex=None):
+                 featurizer: Callable[[str], dict[int, float]] | None = None, reflex=None,
+                 _ablate: frozenset | set = frozenset()):
         if not 0 <= audit_rate <= 1 or not 0 <= sample_budget <= 1:
             raise ValueError("audit_rate and sample_budget must be in [0, 1]")
         if on_oracle_error not in ("raise", "best_guess"):
@@ -349,6 +358,11 @@ class Kadi:
         self._reg = threading.Lock()
         self._pending: OrderedDict[str, _Case] = OrderedDict()
         self._writer = _CheckpointWriter(self)
+        # Benchmark-only switches that disable one safety mechanism at a time, to
+        # measure what it is worth. Never use them in production.
+        self._ablate = frozenset(_ablate)
+        if self._ablate - ABLATIONS:
+            raise ValueError(f"unknown ablations {sorted(self._ablate - ABLATIONS)}")
 
     # ================================================================ public
     def register(self, *questions: Question) -> None:
@@ -418,7 +432,8 @@ class Kadi:
             cached = brain.memory.get(key)
             probs = served.model.predict_proba(x)
             pset = served.cal.prediction_set(probs)
-            novel = served.model.novelty(x, self.novelty_limit) > q.novelty_threshold
+            novel = served.model.novelty(x, self.novelty_limit) > q.novelty_threshold \
+                and "no_novelty" not in self._ablate
             calibrating = not served.cal.calibrated
             recent = brain.recent_tiers
             local_share = (sum(t in ("memory", "reflex") for t in recent) / len(recent)) if recent else 0.0
@@ -437,7 +452,9 @@ class Kadi:
         # to keep that extra cost near `sample_budget` calls per decision:
         # everything is sampled while Kadı rarely answers alone, ~audit_rate
         # once it answers most cases itself.
-        if calibrating or q.mode == "shadow":
+        if "fixed_sampling" in self._ablate:          # v0.5-style fixed rates
+            p_sample = 0.25 if calibrating else self.audit_rate
+        elif calibrating or q.mode == "shadow":
             p_sample = 1.0
         else:
             p_sample = min(1.0, max(self.audit_rate, self.sample_budget / max(local_share, 1e-3)))
@@ -455,7 +472,7 @@ class Kadi:
             reason = "uncalibrated"
         elif len(pset) != 1:
             reason = "ambiguous"
-        elif pset[0] != top:
+        elif pset[0] != top and "no_consistency" not in self._ablate:
             reason = "inconsistent"  # singleton that isn't the model's own best guess
         elif novel:
             reason = "novel"
@@ -465,6 +482,8 @@ class Kadi:
             local = pset[0]
         pset_labels = [q.options[i] for i in pset]
 
+        if "calibrate_on_escalated" in self._ablate:  # the v0.1 bug: a biased, outcome-dependent sample
+            sampled = local is None
         if q.mode == "shadow":
             kind = "shadow"
         elif local is not None:
@@ -648,7 +667,7 @@ class Kadi:
         with self._reg:
             if q.name in self._brains:
                 return self._brains[q.name]
-            b = _Brain(q, self.memory_size, self.reflex, self.drift_arl)
+            b = _Brain(q, self.memory_size, self.reflex, self.drift_arl, self._ablate)
             saved = self.store.load_model(q.name)
             if saved and tuple(saved[0]["options"]) == q.options \
                     and saved[0].get("conditional", False) == q.conditional \
@@ -700,6 +719,11 @@ class Kadi:
         lock: frozen versions are immutable, the live model is shallow-copied."""
         live = b.live.snapshot(keep_optimizer=True)
         q = b.q
+        # Never hand a mutable object to the background writer: a version whose
+        # model *is* the live model (the no_freeze ablation) is packed from the
+        # live snapshot, and calibrator / detector states are deep-copied here.
+        served_model = live if b.served.model is b.live else b.served.model
+        cand_model = None if b.candidate is None else (live if b.candidate.model is b.live else b.candidate.model)
         state = {"format": SNAPSHOT_FORMAT, "versions_issued": b.versions_issued, "seq": b.seq,
                  "refreeze_floor": b.refreeze_floor, "promotions": b.promotions,
                  "served": b.served.meta(), "candidate": b.candidate.meta() if b.candidate else None,
@@ -713,8 +737,9 @@ class Kadi:
                 "mode": q.mode, "conditional": q.conditional, "policy": q.policy}
         b.dirty = 0
         b.last_save = b.last_stats = time.time()
+        state = json.loads(json.dumps(state))
         return {"name": q.name, "spec": spec, "state": state, "stats": b.stats(), "live": live,
-                "served": b.served.model, "candidate": b.candidate.model if b.candidate else None}
+                "served": served_model, "candidate": cand_model}
 
     def _write(self, job: dict) -> None:
         """Pack and persist a captured job. Runs without any court lock."""

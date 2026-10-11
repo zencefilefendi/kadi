@@ -16,6 +16,19 @@ Bu yol haritası beş mühendislik incelemesinden çıktı: istatistik, makine �
 
 ## P1: Kanıt (iddiaları inandırıcı kılmak)
 
+> **Durum (v0.7.0):** büyük ölçüde tamam. Ayrıntılar: [benchmarks/results/p1/REPORT.md](benchmarks/results/p1/REPORT.md).
+> - ✅ **Karşılaştırma yöntemleri:** ayarlanmış eşik ve öğrenilmiş erteleme yönlendiricisi (lojistik; FrugalGPT ve RouteLLM tarzında). İkisi de aynı 500 etiketlik başlangıç dilimiyle ayarlandı.
+> - ✅ **Ablasyonlar:** yükseltilen örneklerle kalibrasyon, dondurma yok, yenilik koruması yok, tutarlılık denetimi yok, sabit örnekleme.
+> - ✅ **İstatistik:** 10 tohum, bootstrap güven aralıkları, Clopper–Pearson sınırları, risk–kapsam grafikleri.
+> - ✅ **Türkçe benchmark'lar:** MASSIVE tr-TR ve OffensEval-2020 TR.
+> - ✅ **İçerik denetimi:** OffensEval-TR ve Measuring Hate Speech (İngilizce).
+> - ✅ **Simüle gürültülü oracle;** üç yönlü metriklerle raporlandı.
+> - ⏳ **Gerçek oracle koşusu:** altyapı hazır (karar önbelleği, maliyet tahmini, tutarlılık ölçümü; bkz. [docs/REAL_ORACLE.md](docs/REAL_ORACLE.md)). API anahtarı gerektirdiği için henüz koşulmadı.
+> - ⏳ Kod inceleme kapısı ve araç seçimi görevleri.
+> - ⏳ Türkçe destek talebi seti.
+> - ⏳ ACI'sız ablasyon.
+
+
 - **Gerçek LLM oracle koşuları.** Oracle kararları önbelleğe alınır; böylece tek bir ücretli koşu bütün yapılandırmalar için yeniden kullanılır. Bunlara ek olarak:
   - 1.000 karar başına maliyet hesaplanır;
   - oracle'ın kendi kendisiyle tutarlılığı (ε) ölçülür: madde başına 5 örnek ve ikinci bir model;
