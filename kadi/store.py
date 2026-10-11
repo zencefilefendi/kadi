@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import os
 import secrets
 import sqlite3
 import threading
@@ -28,6 +29,8 @@ CREATE TABLE IF NOT EXISTS decisions (
   flagged INTEGER NOT NULL DEFAULT 0,
   cost REAL NOT NULL DEFAULT 0,
   latency_ms REAL NOT NULL DEFAULT 0,
+  model_version INTEGER,        -- frozen model version that made a local decision (v0.6)
+  chain_fmt INTEGER,            -- column set covered by row_hash (NULL/1: v0.3-v0.5, 2: + model_version)
   prev_hash TEXT,               -- tamper-evident chain: HMAC of the previous row
   row_hash TEXT                 -- HMAC(key, prev_hash | canonical row)
 );
@@ -44,14 +47,16 @@ CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
 _ADDED_COLUMNS = {"reason": "TEXT", "shadow_label": "TEXT", "flagged": "INTEGER NOT NULL DEFAULT 0",
-                  "prev_hash": "TEXT", "row_hash": "TEXT"}
+                  "prev_hash": "TEXT", "row_hash": "TEXT", "model_version": "INTEGER", "chain_fmt": "INTEGER"}
 
 # Columns covered by the hash chain, in canonical order.
 CHAINED = ("ts", "question", "input_hash", "preview", "label", "tier", "reason", "confidence", "set_size",
            "oracle_label", "shadow_label", "audited", "agreed", "flagged", "cost", "latency_ms")
+CHAINED_V2 = CHAINED + ("model_version",)
+CHAIN_FMT = 2
 GENESIS = "0" * 64
 _REAL = ("ts", "confidence", "cost", "latency_ms")
-_INT = ("set_size", "audited", "agreed", "flagged")
+_INT = ("set_size", "audited", "agreed", "flagged", "model_version")
 
 
 def derive_chain_key(secret: bytes) -> bytes:
@@ -59,7 +64,14 @@ def derive_chain_key(secret: bytes) -> bytes:
 
 
 def _row_hash(key: bytes, prev: str, row: dict) -> str:
-    canon = json.dumps([row[c] for c in CHAINED], ensure_ascii=False, separators=(",", ":"))
+    """HMAC over the previous hash and the row's canonical columns. Rows written
+    since v0.6 (chain_fmt 2) also cover model_version; older rows keep their
+    original column set, so upgrading never invalidates an existing chain.
+    Rewriting chain_fmt cannot hide an edit: the hash would no longer match."""
+    if row.get("chain_fmt") == 2:
+        canon = "v2|" + json.dumps([row[c] for c in CHAINED_V2], ensure_ascii=False, separators=(",", ":"))
+    else:
+        canon = json.dumps([row[c] for c in CHAINED], ensure_ascii=False, separators=(",", ":"))
     return hmac.new(key, (prev + "|" + canon).encode(), hashlib.sha256).hexdigest()
 
 
@@ -76,6 +88,7 @@ class Store:
         self._migrate()
         self.chain_key: bytes | None = None   # set by the engine; enables the hash chain
         self._head: str | None = None
+        self._mem_snapshots: dict[str, bytes] = {}   # used when path == ":memory:"
 
     def _migrate(self) -> None:
         cols = {r[1] for r in self.db.execute("PRAGMA table_info(decisions)")}
@@ -108,6 +121,8 @@ class Store:
         missing = [c for c in CHAINED if c not in row]
         if missing:
             raise ValueError(f"record() missing columns {missing}")
+        row.setdefault("model_version", None)
+        row["chain_fmt"] = CHAIN_FMT
         for c in _REAL:  # canonical types: what SQLite hands back on read
             row[c] = None if row[c] is None else float(row[c])
         for c in _INT:
@@ -156,7 +171,7 @@ class Store:
             a = self.db.execute("SELECT value FROM meta WHERE key='chain_anchor'").fetchone()
             prev = a["value"] if a else GENESIS
             start = int(self.db.execute("SELECT value FROM meta WHERE key='chain_start_id'").fetchone()["value"])
-            cols = ", ".join(("id", "prev_hash", "row_hash") + CHAINED)
+            cols = ", ".join(("id", "prev_hash", "row_hash", "chain_fmt") + CHAINED_V2)
             n = 0
             for r in self.db.execute(f"SELECT {cols} FROM decisions WHERE id > ? ORDER BY id", (start,)):
                 r = dict(r)
@@ -177,6 +192,46 @@ class Store:
         with self.lock:
             self.db.execute("INSERT OR REPLACE INTO models VALUES (?,?,?,?)",
                             (question, json.dumps(spec), json.dumps(state), time.time()))
+
+    # ---------------------------------------------------- model snapshots
+    # Large binary model state lives in side files next to the database (one
+    # per court, written atomically) so that a checkpoint never holds the
+    # SQLite write lock for long. Its SHA-256 is stored in `models`, so a
+    # swapped or corrupted file is refused on load.
+    def _snapshot_path(self, question: str) -> str:
+        d = self.path + ".snapshots"
+        os.makedirs(d, mode=0o700, exist_ok=True)
+        return os.path.join(d, hashlib.sha256(question.encode()).hexdigest()[:32] + ".kadisnap")
+
+    def save_snapshot(self, question: str, blob: bytes) -> str:
+        sha = hashlib.sha256(blob).hexdigest()
+        if self.path == ":memory:":
+            self._mem_snapshots[question] = blob
+            return sha
+        path = self._snapshot_path(question)
+        tmp = f"{path}.{os.getpid()}.{secrets.token_hex(4)}.tmp"
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(blob)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, path)
+        except BaseException:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+            raise
+        return sha
+
+    def load_snapshot(self, question: str, sha256: str) -> bytes:
+        if self.path == ":memory:":
+            blob = self._mem_snapshots[question]
+        else:
+            with open(self._snapshot_path(question), "rb") as f:
+                blob = f.read()
+        if not hmac.compare_digest(hashlib.sha256(blob).hexdigest(), sha256):
+            raise ValueError("snapshot integrity check failed (file does not match the recorded SHA-256)")
+        return blob
 
     def load_model(self, question: str) -> tuple[dict, dict] | None:
         with self.lock:

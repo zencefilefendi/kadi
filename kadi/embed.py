@@ -3,7 +3,7 @@
 The core of Kadı is standard-library only. This module is the one place that
 uses third-party code, and only when you ask for it:
 
-    pip install "kadi[embed]"          # fastembed (ONNX runtime, no PyTorch)
+    pip install "kadi-cascade[embed]"   # fastembed (ONNX runtime, no PyTorch)
 
     from kadi import Kadi
     from kadi.embed import FastEmbedder, HybridFeaturizer
@@ -35,7 +35,7 @@ class FastEmbedder:
         try:
             from fastembed import TextEmbedding
         except ImportError as e:  # pragma: no cover
-            raise ImportError('FastEmbedder needs the optional extra: pip install "kadi[embed]"') from e
+            raise ImportError('FastEmbedder needs the optional extra: pip install "kadi-cascade[embed]"') from e
         cache_dir = cache_dir or os.environ.get("KADI_MODEL_CACHE") or os.path.join(
             os.path.expanduser("~"), ".cache", "kadi-models")
         self.name = model
@@ -101,6 +101,9 @@ class KNNHybridReflex:
     def from_state(self, s: dict) -> "_KNNHybridModel":
         return _KNNHybridModel.from_state(self, s)
 
+    def unpack(self, meta: dict, arrays: dict, prefix: str, base=None) -> "_KNNHybridModel":
+        return _KNNHybridModel.unpack(self, meta, arrays, prefix, base)
+
 
 class _KNNHybridModel:
     def __init__(self, cfg: KNNHybridReflex, n_classes: int):
@@ -112,6 +115,7 @@ class _KNNHybridModel:
         self.lr = OnlineSoftmax(n_classes)
         self.vecs: list = []      # list of float32 arrays (stacked lazily)
         self.labels: list[int] = []
+        self.dim: int | None = None   # embedding width, fixed by the first vector
         self._mat = None
 
     # -------------------------------------------------------- interface
@@ -137,6 +141,8 @@ class _KNNHybridModel:
             n = float(self.np.linalg.norm(v))
             if n:
                 v /= n
+        if v.size and self.dim is not None and v.size != self.dim:   # trailing zeros were dropped
+            v = self.np.pad(v, (0, max(0, self.dim - v.size)))[: self.dim]
         return v
 
     def predict_proba(self, x):
@@ -162,13 +168,50 @@ class _KNNHybridModel:
         self.lr.update(x, y, weight)
         e = self._emb(x)
         if e.size:
+            if self.dim is None:
+                self.dim = int(e.size)
             self.vecs.append(e)
             self.labels.append(y)
             if len(self.labels) > self.cfg.capacity:
                 del self.vecs[0], self.labels[0]
             self._mat = None
 
-    # ------------------------------------------------------ persistence
+    # ------------------------------------------------------ snapshots
+    def snapshot(self, keep_optimizer: bool = False) -> "_KNNHybridModel":
+        """Frozen copy for serving: the logistic part is snapshotted, the vector
+        store is copied by reference (stored vectors are never mutated)."""
+        s = _KNNHybridModel.__new__(_KNNHybridModel)
+        s.np, s.cfg, s.k, s.dim = self.np, self.cfg, self.k, self.dim
+        s.lr = self.lr.snapshot(keep_optimizer)
+        s.vecs, s.labels = list(self.vecs), list(self.labels)
+        s._mat = self._mat
+        return s
+
+    def pack(self, prefix: str, base=None, trainable: bool = True):
+        from array import array
+        meta, arrays = self.lr.pack(prefix + "lr.", base.lr if base is not None else None, trainable)
+        keep = self.cfg.persist
+        vecs = self.vecs[-keep:]
+        vec = array("f")
+        if vecs:
+            vec.frombytes(self.np.vstack(vecs).astype("<f4").tobytes())
+        arrays[prefix + "labels"] = array("i", self.labels[-keep:])
+        arrays[prefix + "vecs"] = vec
+        return {"kind": "knn_hybrid", "lr": meta, "dim": self.dim}, arrays
+
+    @classmethod
+    def unpack(cls, cfg, meta: dict, arrays: dict, prefix: str, base=None) -> "_KNNHybridModel":
+        from .learner import OnlineSoftmax
+        m = cls(cfg, meta["lr"]["k"])
+        m.lr = OnlineSoftmax.unpack(meta["lr"], arrays, prefix + "lr.", base.lr if base is not None else None)
+        m.dim = meta.get("dim")
+        m.labels = arrays[prefix + "labels"].tolist()
+        flat = m.np.frombuffer(arrays[prefix + "vecs"].tobytes(), dtype="<f4")
+        if m.dim and flat.size:
+            m.vecs = list(flat.reshape(-1, m.dim).copy())
+        return m
+
+    # ------------------------------------------------------ persistence (legacy JSON)
     def state(self) -> dict:
         keep = self.cfg.persist
         return {"kind": "knn_hybrid", "lr": self.lr.state(), "labels": self.labels[-keep:],
@@ -181,4 +224,5 @@ class _KNNHybridModel:
         m.lr = OnlineSoftmax.from_state(s["lr"])
         m.labels = list(s.get("labels", []))
         m.vecs = [m.np.asarray(v, dtype=m.np.float32) for v in s.get("vecs", [])]
+        m.dim = len(m.vecs[0]) if m.vecs else None
         return m

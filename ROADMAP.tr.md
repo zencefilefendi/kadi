@@ -2,17 +2,17 @@
 
 Bu yol haritası beş mühendislik incelemesinden çıktı: istatistik, makine öğrenmesi, sistem, güvenlik ve araştırma/ekosistem. Her mühendis kodu ve belgeleri bağımsız olarak okudu; birkaçı ölçüm de yaptı. Maddeler öncelik sırasına göre dizildi ve **geçerlilik düzeltmeleri en başta**. İngilizce sürüm: [ROADMAP.md](ROADMAP.md).
 
-## P0: Doğruluk ve geçerlilik (yeni özelliklerden önce)
+## P0: Doğruluk ve geçerlilik — ✅ v0.6'da tamamlandı
 
-| # | Madde | Neden | Bitti sayılması için |
+| # | Madde | v0.6'daki durum | Kanıt |
 |---|---|---|---|
-| 1 | **Her an geçerli sertifika ve izleme** (güven dizileri ve bahis tabanlı sınırlar; Howard vd. 2021, Waudby-Smith & Ramdas 2024) | LTT her örnekte yeniden sertifikalanıyor, bu yüzden "≥ 1−δ olasılıkla" ifadesi her an için ayrı ayrı geçerli, bütün zaman boyunca birden değil. Sapma kesicisi de Pr(yanlış \| yerel) oranını Wald aralığıyla, örtüşen pencerelerde test ediyor | 10⁶ simüle kararda yanlış gözetim oranı ≤ δ′; regresyon testiyle sabitlenmiş |
-| 2 | **Dondurulmuş model anlık görüntülerini sertifikalamak** | Eğitimden ayrı tutulan örnekler, hangi yükseltmelerin refleksi eğiteceğini dolaylı olarak etkiliyor. "Model kalibrasyondan bağımsız" varsayımı yalnızca yaklaşık doğru | Saldırgan geri beslemede bile simüle ihlaller ≤ δ; her kararda sertifika ve model sürümü kayıtlı |
-| 3 | **Checkpoint'i sıcak yoldan çıkarmak, ikili formata geçmek** | Ölçüldü: 150 etiketle checkpoint 365 MB JSON; `json.dumps` 6 saniye sürüyor ve bu sürede **o sorunun kilidi tutuluyor** | Checkpoint sırasında refleks p99 değişmiyor; anlık görüntü ≤ 70 MB |
-| 4 | ~~Kalan güvenlik bulguları V5–V7~~ | İkinci güvenlik denetimi | ✅ **v0.5.1'de yapıldı**: kesintisiz baştan budama, yanıt başına CSP nonce, hata mesajlarında kısaltılmış tek satırlık yansıtma |
-| 5 | **Paket adı** | `kadi` adı PyPI'da başkasına ait (Kadi4Mat); `import kadi` çakışır | `kadi-cascade` adıyla Trusted Publishing üzerinden yayın; import adına karar verilmesi |
+| 1 | **Her an geçerli sertifika ve izleme** | ✅ LTT, bahis e-süreçleri ve Ville eşitsizliğiyle sertifikalanıyor; garanti zaman boyunca geçerli. Wald testine dayalı sapma kesicisinin yerini, sunulan birleşik riski izleyen ve ARL kontrollü bir Shiryaev–Roberts e-detektörü aldı. *Kriter değişti*: detektör, tek bir koşudaki yanlış alarm olasılığını değil, yanlış alarma kadar geçen beklenen sürenin ≥ ARL olmasını garanti ediyor | `test_ltt_certificate_is_anytime_valid` (1.000 örneklik 200 akış), `test_drift_detector_false_alarms_and_detection`, `test_drift_alarm_recertifies_and_alerts` |
+| 2 | **Dondurulmuş model anlık görüntülerini sertifikalamak** | ✅ Canlı, sunulan ve aday sürümler var. Her sürüm yalnızca dondurulduktan sonra gelen örneklerle kalibre ediliyor. δ sürümler arasında harcanıyor; böylece tüm sertifikalar aynı anda geçerli. Model sürümü her kararda **hash zincirinin içinde** kaydediliyor. Orijinal kriterdeki "saldırgan geri besleme" simülasyonu ayrıca koşulmadı: bağımsızlık artık yapı gereği sağlanıyor ve motor düzeyindeki sınır testleri geçiyor | `TestVersions`, `test_model_version_is_recorded_and_chained`, `TestGuarantee`; 126/126 benchmark koşusu |
+| 3 | **Checkpoint'i sıcak yoldan çıkarmak, ikili format** | ✅ Kilit 11 ms tutuluyor (eskiden 5,82 s). Anlık görüntü 43 MB (eskiden 411 MB JSON). Dosya arka planda ve atomik olarak yazılıyor, yüklenirken SHA-256 ile doğrulanıyor | `test_checkpoint_holds_the_lock_only_briefly`, `test_tampered_snapshot_is_refused`; ENGINEERING §5.5 |
+| 4 | Kalan güvenlik bulguları V5–V7 | ✅ v0.5.1'de yapıldı | `TestSecurityRegressionsV2` |
+| 5 | **Paket adı** | ◐ Dağıtım adı artık `kadi-cascade`; import adı `kadi` olarak kaldı. **Açık kalanlar**: PyPI'a yayın (bakımcının hesabı ve Trusted Publishing kurulumu gerekiyor) ve Kadi4Mat ile import adı çakışması hakkında nihai karar | `pyproject.toml` |
 
-İkinci güvenlik denetiminin yedi bulgusunun (V1–V7) tamamı v0.5.1'de düzeltildi; her biri `TestSecurityRegressionsV2` içinde test ediliyor.
+**Ölçülen bedel.** Katı geçerlilik, 36 benchmark yapılandırmasında yerel karar oranından medyan 9,3 puan götürüyor (aralık −1,5 ile +19,7). P3 bu farkı hedefliyor.
 
 ## P1: Kanıt (iddiaları inandırıcı kılmak)
 

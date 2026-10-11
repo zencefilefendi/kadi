@@ -259,7 +259,8 @@ class KadiMCP:
                 "questions": [{"name": q["question"], "decisions": q["n"], "target_error": q.get("target_error"),
                                "policy": q.get("policy"), "decided_locally_recent": q.get("local_rate_recent"),
                                "audited_agreement": q.get("audit_agreement"), "calibrated": q.get("calibrated"),
-                               "probation": q.get("probation"), "escalation_reasons": q.get("escalations")}
+                               "probation": q.get("probation"), "escalation_reasons": q.get("escalations"),
+                               "model_version": q.get("version"), "drift_monitor": q.get("drift")}
                               for q in s["questions"]],
                 "recent_alerts": [{"question": x["question"], "kind": x["kind"], **x["detail"]} for x in s["alerts"][:3]]}
 

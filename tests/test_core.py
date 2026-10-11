@@ -38,15 +38,14 @@ class TestPieces(unittest.TestCase):
     def test_conformal_coverage(self):
         rng = random.Random(0)
         c = AdaptiveConformal(0.1, window=2000, gamma=0.0, min_calibration=50)
-        proba = lambda x: [x[0], 1 - x[0]]  # noqa: E731  calibrated toy model
         hits = total = 0
         for _ in range(4000):
-            p = rng.uniform(0.5, 1.0)
+            p = rng.uniform(0.5, 1.0)        # calibrated toy model: correct w.p. p
             y = 0 if rng.random() < p else 1
             if c.threshold() is not None:
                 total += 1
                 hits += y in c.prediction_set([p, 1 - p])
-            c.observe({0: p}, [p, 1 - p], y)
+            c.observe([p, 1 - p], y)
         self.assertGreaterEqual(hits / total, 0.88)
         self.assertLessEqual(hits / total, 0.93)
 
@@ -58,37 +57,67 @@ class TestPieces(unittest.TestCase):
                 exact = sum(comb(n, i) * p ** i * (1 - p) ** (n - i) for i in range(k + 1))
                 self.assertAlmostEqual(binom_cdf(k, n, p), exact, places=10)
 
-    def test_ltt_certificate_is_valid(self):
+    def test_ltt_certificate_is_anytime_valid(self):
         """Toy calibrated model: p ~ U(0.5, 1), correct w.p. p, so the true risk at
-        threshold lam is (1 - lam)^2. The certificate may fail at most ~delta of the time."""
+        threshold lam is (1 - lam)^2. The certificate must be valid UNIFORMLY over
+        time: the fraction of streams in which the certified threshold *ever* has
+        risk > alpha may be at most ~delta."""
         from kadi.conformal import LearnThenTest
         rng = random.Random(1)
-        alpha, delta, trials, fails, certified = 0.02, 0.1, 300, 0, 0
+        alpha, delta, trials, horizon = 0.02, 0.1, 200, 1000
+        ever_bad = certified = 0
         for _ in range(trials):
-            c = LearnThenTest(alpha, delta, window=500)
-            for _ in range(500):
+            c = LearnThenTest(alpha, delta)
+            bad = False
+            for _ in range(horizon):
                 pm = rng.uniform(0.5, 1.0)
-                c.evals.append((pm, rng.random() < pm))
-                c.samples.append(({}, 0))
-            c._certify()
-            if c.lam is not None:
-                certified += 1
-                fails += (1 - c.lam) ** 2 > alpha
+                c.observe([pm, 1 - pm], 0 if rng.random() < pm else 1)
+                if c.lam is not None and (1 - max(c.lam, 0.5)) ** 2 > alpha:
+                    bad = True
+            certified += c.lam is not None
+            ever_bad += bad
         self.assertGreater(certified, trials * 0.9)
-        self.assertLessEqual(fails / trials, delta + 0.03)
+        self.assertLessEqual(ever_bad / trials, delta + 0.03)
 
-    def test_ltt_needs_enough_samples(self):
-        from kadi.conformal import LearnThenTest
+    def test_ltt_certifies_after_min_samples_of_clean_evidence(self):
+        from kadi.conformal import LTT_GRID, LearnThenTest
         c = LearnThenTest(0.01, 0.05)
-        self.assertEqual(c.min_samples, 299)  # (1 - 0.01)^n <= 0.05
+        n = c.min_samples
+        for i in range(n):
+            self.assertIsNone(c.lam, f"certified too early at sample {i}")
+            c.observe([0.5, 0.5], 0)          # never local at strict thresholds: zero loss
+        self.assertIsNotNone(c.lam)           # certified after exactly min_samples samples
+        self.assertIn(c.lam, LTT_GRID)
         with self.assertRaises(ValueError):
             Choice("x", ["a", "b"], policy="ltt", conditional=True)
+
+    def test_version_delta_spending_sums_to_delta(self):
+        from kadi.conformal import version_delta
+        total = sum(version_delta(0.05, v) for v in range(1, 200_000))
+        self.assertLess(total, 0.05)
+        self.assertGreater(total, 0.0499)
+
+    def test_drift_detector_false_alarms_and_detection(self):
+        from kadi.conformal import DriftDetector
+        rng = random.Random(3)
+        alpha, arl = 0.05, 200
+
+        def first_alarm(p, horizon):
+            d = DriftDetector(alpha, arl)
+            for t in range(1, horizon + 1):
+                if d.update(1.0 if rng.random() < p else 0.0):
+                    return t
+            return horizon
+        null_times = [first_alarm(alpha, 3000) for _ in range(150)]      # H0 at the boundary
+        self.assertGreaterEqual(sum(null_times) / len(null_times), arl)  # E[time to false alarm] >= ARL
+        hit_times = [first_alarm(4 * alpha, 3000) for _ in range(50)]    # sustained 4x shift
+        self.assertLess(sum(hit_times) / len(hit_times), 150)
 
     def test_mondrian_state_roundtrip(self):
         from kadi.conformal import MondrianConformal, conformal_from_state
         m = MondrianConformal(3, 0.05, min_calibration=2)
         for i in range(9):
-            m.observe({i: 1.0}, [0.6, 0.3, 0.1], i % 3)
+            m.observe([0.6, 0.3, 0.1], i % 3)
         m2 = conformal_from_state(json.loads(json.dumps(m.state())))
         self.assertEqual(m2.calibration_size, 9)
         self.assertTrue(m2.calibrated)

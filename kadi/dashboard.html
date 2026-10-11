@@ -177,7 +177,7 @@ tr:last-child td { border-bottom: 0; }
     <svg width="44" height="44" viewBox="0 0 40 40" aria-hidden="true"><path d="M20 4 L34 10 V20 C34 28 28 34 20 37 C12 34 6 28 6 20 V10 Z" fill="none" stroke="var(--gold)" stroke-width="2"/><path d="M14 20 l4 4 l8 -9" fill="none" stroke="var(--gold)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
     <div>
       <h2>The oath</h2>
-      <p>Kadı answers on its own only when its conformal prediction set has exactly one label. Otherwise it escalates to the oracle. Under exchangeability, this keeps the share of decisions that disagree with the oracle at or below each court's target α. Adaptive conformal inference adjusts α<sub>t</sub> as traffic drifts. Random audits re-ask the oracle about local answers, so the agreement figure above is measured, not assumed.</p>
+      <p>Only a <em>frozen</em> model version answers, and only when its own certificate allows it: a conformal set with at most one label, or an anytime-valid Learn-then-Test threshold. Each version earns that certificate on calibration samples drawn after it was frozen, so the bound on disagreement with the oracle (≤ α) holds under exchangeability; with LTT it holds with probability ≥ 1 − δ at every point in time. An e-detector watches the deployed risk and re-certifies on an alarm. Random audits re-ask the oracle, so the agreement figure above is measured, not assumed.</p>
     </div>
   </section>
 </div>
@@ -341,7 +341,7 @@ function drawSummary() {
       .map(([k, v]) => `${esc(k)} <span class="num">${v}</span>`).join(" · ") || "—";
     const sh = q.mode === "shadow" && q.shadow && q.shadow.n
       ? `<div class="why">would decide ${pct(q.shadow.would_be_local, 0)} locally · ${pct(q.shadow.agreement)} agree</div>` : "";
-    return `<tr><td><b>${esc(q.question)}</b><span class="mode ${esc(q.mode)}">${esc(q.mode || "live")}</span>${q.conditional ? '<span class="mode">per-label</span>' : ""}${q.policy === "ltt" ? '<span class="mode" title="Learn then Test: risk ≤ α with probability ≥ 1 − δ">LTT</span>' : ""}
+    return `<tr><td><b>${esc(q.question)}</b><span class="mode ${esc(q.mode)}">${esc(q.mode || "live")}</span>${q.conditional ? '<span class="mode">per-label</span>' : ""}${q.policy === "ltt" ? '<span class="mode" title="Anytime-valid Learn then Test: risk ≤ α with probability ≥ 1 − δ, at every point in time">LTT</span>' : ""}${q.version ? `<span class="mode" title="served frozen model version${q.version.candidate ? " → candidate being certified" : ""}">v${esc(q.version.served)}${q.version.candidate ? " → v" + esc(q.version.candidate) : ""}</span>` : ""}
       <div class="sub">${esc((q.options || []).join(" · "))}</div>${sh}</td>
       <td><div class="mix" title="memory ${q.memory} · reflex ${q.reflex} · oracle ${q.oracle} · fallback ${q.fallback || 0}">
         <span style="width:${100*q.memory/tot}%;background:var(--memory)"></span>

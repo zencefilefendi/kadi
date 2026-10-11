@@ -17,14 +17,14 @@ Geri kalan her şeyi oracle'a yükseltir ve her yükseltmeden öğrenir.
 
 LLM tabanlı ajanlar ve uygulamalar çok sayıda küçük, şeması belli karar verir: bir talebi doğru ekibe yönlendirmek, spam'i işaretlemek, sıradaki aracı seçmek, bir değişikliği onaylamak gibi. Her birini frontier modele sormak doğru sonuç verir ama yavaş ve pahalıdır. Küçük bir modele sormak ucuzdur ama hata oranı bilinmez.
 
-Kadı üç katmanlı bir kaskattır: **hafıza → yerel refleks → oracle**. Ortadaki katman yalnızca **split-conformal tahmin kümesi tek bir etiket içerdiğinde** cevap verir. Değiştirilebilirlik (exchangeability) varsayımı altında bu, dönen bir kararın oracle ile ayrışma olasılığını kullanıcının seçtiği α ile sınırlar. Sınır isteğe bağlı olarak her etiket için ayrı ayrı (Mondrian) da tutulabilir.
+Kadı üç katmanlı bir kaskattır: **hafıza → yerel refleks → oracle**. Ortadaki katman yalnızca **istatistiksel bir sertifika izin verdiğinde** cevap verir. Bu sertifika ya en fazla bir etiket içeren bir split-conformal tahmin kümesidir ya da bir Learn-then-Test eşiğidir. Değiştirilebilirlik (exchangeability) varsayımı altında bu, dönen bir kararın oracle ile ayrışma olasılığını kullanıcının seçtiği α ile sınırlar. Sınır isteğe bağlı olarak her etiket için ayrı ayrı (Mondrian) tutulabilir; Learn-then-Test ile **≥ 1 − δ olasılıkla ve zamanın her anında** geçerlidir.
 
-Bunu canlı akan (online) bir sistemde doğru yapmak dört mekanizma gerektirir:
+Bunu canlı akan (online) bir sistemde doğru yapmak dört mekanizma gerektirir (v0.6):
 
-- Kalibrasyon, akıştan **rastgele seçilen ve eğitimde hiç kullanılmayan** örneklerle yapılır; yükseltilen örneklerle asla.
-- Model öğrendikçe kalibrasyon skorları yeniden hesaplanır.
-- Dağılım kaymasına karşı Adaptive Conformal Inference (ACI) kullanılır.
-- İstatistiksel testle tetiklenen bir **sapma kesicisi** vardır.
+- **Dondurulmuş model sürümleri.** Canlı model oracle'ın her etiketinden öğrenir, ama kararları yalnızca dondurulmuş anlık görüntüler verir. Her sürüm, dondurulduktan *sonra* gelen örneklerle sertifikalanır. Böylece puanlayan model kalibrasyon verisinden gerçekten bağımsızdır.
+- **Rastgele kalibrasyon örnekleri.** Örnekleme yazı-turası girdiye asla bağlı değildir. Oracle'a giden örneklerle kalibrasyon asla yapılmaz.
+- **Her an geçerli sertifika.** Bahis e-süreçleri ve Ville eşitsizliği kullanılır; δ sürümler arasında paylaştırılır. Böylece verilen her sertifika zamanın her anında geçerlidir.
+- **Sunulan riski izleyen bir e-detektör.** Yanlış alarm aralığı sınırlıdır; alarmda sunulan sürüm yeniden sertifikalanır.
 
 Bunlara ek olarak dağılım dışı ve saldırgan girdilere karşı bir yenilik koruması, gölge mod, KVKK odaklı PII maskeleme ve sertleştirilmiş bir HTTP servisi bulunur. Tamamı Python standart kütüphanesiyle yazılmıştır ve **sıfır bağımlılıklıdır**.
 
@@ -33,7 +33,7 @@ Bunlara ek olarak dağılım dışı ve saldırgan girdilere karşı bir yenilik
 | Katman | Gecikme | Maliyet | Ne zaman cevap verir |
 |---|---|---|---|
 | **Hafıza** | µs | $0 | aynı girdi daha önce oracle'a sorulduysa |
-| **Refleks** | ms | $0 | conformal küme tek etiketliyse ve tüm korumalar geçiyorsa |
+| **Refleks** | ms | $0 | sunulan dondurulmuş sürümün sertifikası izin veriyorsa ve tüm korumalar geçiyorsa |
 | **Oracle** | sn | $$ | diğer her durumda; verdiği karar refleksi eğitir |
 | **Fallback** | ms | $0 | oracle çöktüyse ve politika `best_guess` ise; işaretlidir, garanti taşımaz |
 
@@ -43,14 +43,14 @@ $$
 \Pr\big(\hat{y} \neq O(x)\big) \;\le\; \Pr\big(O(x) \notin C(x)\big) \;\le\; \alpha
 $$
 
-Bir ayrışma ancak yerel cevapta mümkündür, yerel cevap da ancak C(x) = {ŷ} olduğunda verilir. Tam ifade, varsayımlar, Mondrian varyantı, ACI sınırı ve **neyin garanti edilmediği** [docs/THEORY.md](docs/THEORY.md) belgesindedir.
+Bir ayrışma ancak yerel cevapta mümkündür; yerel cevap da ancak |C(x)| ≤ 1 olduğunda verilir. Küme boşsa en olası etiket verilir; bu durum zaten bir kapsamama olayı olarak α bütçesinde sayılmıştır. Tam ifade, varsayımlar, Mondrian varyantı, ACI sınırı ve **neyin garanti edilmediği** [docs/THEORY.md](docs/THEORY.md) belgesindedir.
 
 ### İki politika
 
 | `policy` | Yerel cevap koşulu | Garanti | En uygun olduğu yer |
 |---|---|---|---|
-| `"conformal"` (varsayılan) | conformal küme tek etiketli | Ayrışma ≤ α, **ortalamada**; ACI kaymaya uyum sağlar; istenirse **etiket başına** | nadir ama kritik etiketler, değişken trafik |
-| `"ltt"` | max p ≥ λ̂; λ̂ **Learn then Test** ile sertifikalı | **≥ 1 − δ olasılıkla** ayrışma ≤ α | çok etiketli sorular; aynı α'da en çok yerel karar |
+| `"conformal"` (varsayılan) | conformal küme en fazla bir etiketli | Ayrışma ≤ α, **ortalamada**; ACI kaymaya uyum sağlar; istenirse **etiket başına** | aynı α'da en çok yerel karar; nadir ama kritik etiketler |
+| `"ltt"` | max p ≥ λ̂; λ̂ **her an geçerli Learn then Test** ile sertifikalı | **≥ 1 − δ olasılıkla, zamanın her anında** ayrışma ≤ α | yüksek olasılıklı ve zamandan bağımsız garanti gerektiğinde (denetim, düzenlemeye tabi kullanım) |
 
 ## Neden basit bir güven eşiği değil?
 
@@ -58,7 +58,7 @@ Bir ayrışma ancak yerel cevapta mümkündür, yerel cevap da ancak C(x) = {ŷ}
 |---|---|---|
 | Yerel cevap koşulu | Kalibre edilmemiş skor > elle seçilen eşik | Tek elemanlı conformal küme, argmax ile tutarlı |
 | Hata iddiası | Başkasının verisinde benchmark doğruluğu | ***Sizin* oracle'ınızla ayrışma ≤ α**; soru başına, istenirse etiket başına |
-| Kayma olunca | Sessizce bozulur | ACI α<sub>t</sub>'yi ayarlar; sapma kesicisi her şeyi yükseltir ve alarm verir |
+| Kayma olunca | Sessizce bozulur | ACI α<sub>t</sub>'yi ayarlar; yanlış alarm oranı sınırlı bir e-detektör yeniden sertifikalar, kararları oracle'a gönderir ve alarm verir |
 | Kanıt | Çevrimdışı değerlendirme | Canlı trafikte sürekli rastgele denetim, panelde görünür |
 | Devreye alma | Geçip umut etmek | `replay` → `shadow` → soru soru `live` |
 
@@ -66,7 +66,7 @@ Bir ayrışma ancak yerel cevapta mümkündür, yerel cevap da ancak C(x) = {ŷ}
 
 ```bash
 pip install git+https://github.com/zencefilefendi/kadi                       # çekirdek: sıfır bağımlılık
-pip install "kadi[embed] @ git+https://github.com/zencefilefendi/kadi"       # + anlamsal refleks (fastembed/ONNX)
+pip install "kadi-cascade[embed] @ git+https://github.com/zencefilefendi/kadi"       # + anlamsal refleks (fastembed/ONNX)
 kadi --help
 ```
 
@@ -132,38 +132,29 @@ Next.js projeleri için tipli TypeScript istemcisi [clients/typescript](clients/
 
 ## Açık benchmark sonuçları
 
-`benchmarks/run.py`, **Banking77** (13.083 sorgu, 77 niyet) ve **CLINC150** (22.500 sorgu, 150 niyet) veri setlerini tohumlu rastgele sırayla taze bir Kadı örneğinden geçirir. Oracle rolünü gerçek etiket oynar, yani *hata* hem oracle ile ayrışma hem de gerçek doğruya göre hatadır. Değerler 3 tohumun ortalamasıdır; ayrıntılı tablolar [benchmarks/results/RESULTS-labels.md](benchmarks/results/RESULTS-labels.md) dosyasında.
+`benchmarks/run.py`, **Banking77** (13.083 sorgu, 77 niyet) ve **CLINC150** (22.500 sorgu, 150 niyet) veri setlerini tohumlu rastgele sırayla taze bir Kadı örneğinden geçirir. Oracle rolünü veri setinin kendi etiketi oynar; yani *hata* hem oracle ile ayrışma hem de gerçek doğruya göre hatadır. Değerler v0.6 motoruyla, 3 tohumun ortalamasıdır. *Çağrı* = karar başına oracle çağrısı (her kararı oracle'a sormak = 1,00).
 
-| | Banking77 yerel / hata | CLINC150 yerel / hata | Hata kontrol altında mı? |
+**α = %5'te yerel oran / hata / çağrı:**
+
+| Refleks · politika | Banking77 | CLINC150 | Garanti |
 |---|---|---|---|
-| eşik τ = 0,5 (saf yönlendirici) | %85,9 / **%18,80** | %87,2 / **%10,41** | hayır |
-| eşik τ = 0,9 (elle ayarlı) | %65,4 / %2,89 | %73,5 / %1,47 | hayır |
-| Kadı conformal, α = %5 | %54,7 / %1,28 | %74,7 / %2,16 | ✅ ortalamada |
-| **Kadı LTT, α = %5** | **%63,9 / %2,47** | **%79,5 / %3,19** | ✅ %95 olasılıkla |
-| **Kadı LTT, α = %10** | **%74,4 / %6,09** | **%85,4 / %6,94** | ✅ %95 olasılıkla |
+| saf eşik τ = 0,5 | %85,9 / **%18,80** / 0,14 | %87,2 / **%10,41** / 0,13 | yok |
+| elle ayarlanmış eşik τ = 0,9 | %65,4 / %2,89 / 0,35 | %73,5 / %1,47 / 0,27 | yok (eşik sonradan seçilmiş) |
+| n-gram · conformal | %46,7 / %1,15 / 0,58 | %64,2 / %1,69 / 0,41 | ortalamada |
+| n-gram · LTT | %49,1 / %1,66 / 0,56 | %65,2 / %1,72 / 0,40 | %95 olasılıkla, her an |
+| MiniLM + k-NN · conformal | %63,8 / %2,46 / 0,42 | %77,4 / %3,27 / 0,28 | ortalamada |
+| MiniLM + k-NN · LTT | %57,4 / %1,92 / 0,48 | %71,4 / %1,14 / 0,34 | %95 olasılıkla, her an |
+| **bge-small + k-NN · conformal** | **%70,2 / %2,52 / 0,35** | **%84,7 / %3,40 / 0,21** | ortalamada |
+| **bge-small + k-NN · LTT** | **%66,2 / %1,74 / 0,39** | **%78,1 / %1,32 / 0,27** | **%95 olasılıkla, her an** |
 
 **Sonuçlar ne söylüyor:**
 
-- **Garanti, 54 koşunun tamamında tuttu** (2 veri seti × 3 politika × 3 α × 3 tohum); yalnızca ortalamada değil, her tohumda ayrı ayrı.
-- **LTT, her α değerinde conformal'dan 3,5–9 puan daha fazla kararı yerelde verdi.**
-- **İyi seçilmiş sabit bir eşik rekabetçi olabilir, ama bu ancak doğru eşiği önceden biliyorsanız işe yarar.** Doğru eşik veri setine göre değişir ve garanti taşımaz; τ = 0,5 seçilirse hata sessizce %10–19'a çıkar. Kadı bu çalışma noktasını otomatik olarak ve sertifikayla seçer.
-- **Etiket başına garanti, çok etiketli sorularda ölçeklenmez.** Az etiketli ve nadir etiketin kritik olduğu sorularda kullanın.
-
-### Anlamsal refleks: embedding + k-NN
-
-İsteğe bağlı `[embed]` paketi; cümle embedding'leri, oracle'ın etiketlediği örnekler üzerinden k-en yakın komşu oylaması ve mevcut çevrimiçi modeli birleştiren hibrit bir refleks ekler. Kalibrasyon katmanı modelden bağımsızdır: daha güçlü bir refleks yalnızca **ne kadar sık** yerel karar verildiğini değiştirir, garantiyi asla. Ayarlar, değerlendirme koşularından ayrı bir ayar akışında seçildi.
-
-**Yerelde verilen karar oranı (3 tohum ortalaması; her koşuda hata ≤ α):**
-
-| Refleks | Banking77 LTT α=%2 / %5 / %10 | CLINC150 LTT α=%2 / %5 / %10 |
-|---|---|---|
-| n-gram (çekirdek, sıfır bağımlılık) | %47,0 / %63,9 / %74,4 | %69,8 / %79,5 / %85,4 |
-| + çok dilli MiniLM + k-NN | %54,5 / %70,7 / %82,1 | %76,1 / %81,9 / %88,6 |
-| **+ bge-small-en + k-NN** | **%61,2 / %79,6 / %89,3** | **%80,3 / %89,8 / %94,1** |
-
-- **Garanti 126 koşunun 126'sında tuttu.**
-- **α = %5'te bge reflexi, sıfır bağımlılıklı reflekse göre frontier çağrılarını %36 (Banking77) ve %40 (CLINC150) azalttı.**
-- Çok dilli MiniLM bu İngilizce benchmark'larda bge'nin gerisinde kalıyor. Bu beklenen bir sonuç; MiniLM'in asıl değeri Türkçe ve diğer diller için.
+- **Garanti 126 koşunun tamamında tuttu.** Her tohum ayrı ayrı kontrol edildi.
+- **En iyi yapılandırma (bge + conformal), α = %5'te oracle çağrılarının %65'ini (Banking77) ve %79'unu (CLINC150) ortadan kaldırıyor.** Her an geçerli LTT ile bu oranlar %61 ve %73.
+- **Saf güven eşiği hiçbir uyarı vermeden %10–19 hata yapıyor.** Elle ayarlanmış bir eşik iyi görünebilir, ama ancak sonradan bakıldığında ve garantisiz. Kadı çalışma noktasını otomatik olarak ve sertifikayla seçiyor.
+- **Katı geçerliliğin bedeli (v0.6 ve v0.5).** v0.5, öğrenmeye devam eden bir modeli kalibre ediyordu ve LTT sertifikası yalnızca o an için geçerliydi. v0.6 bu iki kısıtı kaldırıyor. Karşılığında aynı α'da daha az yerel karar veriyor: 36 yapılandırmada medyan 9,3 puan (aralık −1,5 ile +19,7). Sebebi, her sürümün sertifikasını taze veriyle kazanmak zorunda olması. Daha güçlü bir refleks bu kaybın çoğunu geri kazandırıyor; gerisi [yol haritasında](ROADMAP.tr.md) (P3).
+- **Conformal, 18 yapılandırmanın 13'ünde LTT'den daha çok yerel karar verdi.** Garantisi daha zayıf (ortalamada); LTT ise zamanın her anında ve sürümler arasında paylaşılan bir garanti için ek kanıt istiyor. Hangi garantiye ihtiyacınız varsa ona göre seçin.
+- **Etiket başına garanti (Mondrian) 77–150 etiketli sorularda ölçeklenmiyor:** yerel karar oranı ~%0. Yalnızca az etiketli sorularda kullanın.
 
 ```python
 from kadi.embed import FastEmbedder, HybridFeaturizer, KNNHybridReflex, MULTILINGUAL
@@ -172,14 +163,14 @@ kadi = Kadi(oracle, featurizer=HybridFeaturizer(FastEmbedder(MULTILINGUAL)), ref
 
 ## Değerlendirme (sentetik, tekrarlanabilir)
 
-Demoda simüle oracle %2 gürültülüdür ve çağrı başına $0.012 tutar. Akışın %30–33'ünde bir oracle kesintisi, %50'sinde bir kelime kayması vardır. 6.000 talep, 2 soru, α = %5:
+Demoda simüle oracle %2 gürültülüdür ve çağrı başına $0,012 tutar. Akışın %30–33'ünde bir oracle kesintisi, %50'sinde bir kelime kayması vardır. 6.000 talep, 2 soru, α = %5, v0.6:
 
-| | Yerel | Denetimde uyuşma | Gerçekleşen kapsamama | Maliyet (yalnız oracle'a karşı) |
-|---|---|---|---|---|
-| `route_ticket`, marjinal | %94,3 | %99,1 | %3,0 | $6,83 / $72 |
-| `is_urgent`, etiket başına | %62,6 | %97,8 | %3,7 | $28,09 / $72 |
+| | Yerel | Denetimde uyuşma | Karar hatası (tahmini) | Küme kapsamaması | Maliyet (yalnız oracle'a karşı) |
+|---|---|---|---|---|---|
+| `route_ticket`, marjinal | %77,8 | %94,9 | %4,0 | %6,3 | $19,96 / $72 |
+| `is_urgent`, etiket başına | %52,2 | %95,5 | %2,3 | %5,5 | $36,73 / $72 |
 
-Veri sentetik ve sözcüksel olarak kolaydır. Kendi verinizi `replay` ve gölge modla ölçün.
+Karar düzeyindeki hata α'nın altında. Küme kapsamaması ise α'nın biraz üstünde. Conformal garantisi ortalamada geçerli olduğu için buna izin verir; koşu bir kesinti, bir kayma ve gürültülü bir oracle içeriyor. Veri sentetik ve sözcüksel olarak kolaydır. Kendi verinizi `replay` ve gölge modla ölçün.
 
 ## Güvenlik ve gizlilik
 
@@ -190,19 +181,19 @@ Bağımsız bir saldırgan gözüyle yapılan inceleme 11 sorun buldu. Hepsi dü
 | Erişim | sabit zamanlı token doğrulaması, CSRF ve DNS rebinding korumaları, hız sınırı, gövde ve girdi limitleri |
 | Sertleştirme | katı CSP, root olmayan ve salt okunur konteyner |
 | Gizlilik | TC kimlik, IBAN, kart, telefon, e-posta ve anahtar maskeleme (kayıtta ve isteğe bağlı olarak oracle'a giderken), anahtarlı HMAC, saklama süresi |
-| Bütünlük | şemaya kilitli çıktı, prompt injection ayraçları, yenilik koruması, sapma kesicisi |
+| Bütünlük | şemaya kilitli çıktı, prompt injection ayraçları, yenilik koruması, sapma e-detektörü, SHA-256 doğrulamalı model anlık görüntüleri |
 | Denetlenebilirlik | **kurcalanamaz defter**: her karar bir öncekine HMAC ile zincirlenir; `kadi verify` değiştirilmiş, silinmiş ya da araya eklenmiş satırı bulur; `kadi anchor` zincir başını dışarıda saklamak için verir |
 
 ## Durum ve bilinen sınırlar
 
-Kadı v0.5, tek sunuculu kullanım için özellik açısından tamamdır. Neyin doğrulandığı ve neyin doğrulanmadığı:
+Kadı v0.6, tek sunuculu kullanım için özellik açısından tamamdır. Neyin doğrulandığı ve neyin doğrulanmadığı:
 
 | Alan | Durum |
 |---|---|
-| Kalibrasyon (conformal, Mondrian, LTT) | ✅ birim ve simülasyon testleri; açık benchmark'ta garanti 126/126 koşuda tuttu |
+| Kalibrasyon (conformal, Mondrian, her an geçerli LTT, e-detektör) | ✅ birim ve simülasyon testleri (LTT'nin zaman boyunca geçerliliği, detektörün ARL'si, δ harcaması); açık benchmark'ta garanti 126/126 koşuda tuttu |
 | Refleks (n-gram, embedding + k-NN) | ✅ Banking77 ve CLINC150 üzerinde ölçüldü |
-| Servis, güvenlik, defter, MCP | ✅ 95 test (iki güvenlik denetimi regresyon paketi ve MCP stdio uçtan uca testi dahil); CI'da Python 3.11–3.13 ve Docker |
-| İstatistiksel ayrıntılar | ⚠️ Sertifika her an için ayrı ayrı geçerli, bütün akış boyunca birden değil; model ile kalibrasyon arasındaki bağımsızlık da yaklaşık. Bkz. [THEORY §7c](docs/THEORY.md). Düzeltmeler [yol haritasında](ROADMAP.tr.md) P0 önceliğinde |
+| Servis, güvenlik, defter, MCP, dondurulmuş sürümler | ✅ 101 test (iki güvenlik denetimi regresyon paketi, MCP stdio uçtan uca testi, terfi, yeniden başlatma ve kurcalanmış anlık görüntü testleri dahil); CI'da Python 3.11–3.13 ve Docker |
+| İstatistiksel ayrıntılar | ⚠️ Değiştirilebilirlik (exchangeability) hâlâ varsayılıyor; kayma durumunda e-detektör koruma sağlıyor. ACI sınırı gevşek; hafıza cevapları denetlenmiyor. Bkz. [THEORY §7c](docs/THEORY.md) |
 | **Gerçek LLM oracle** | ⚠️ kod hazır, ama benchmark'larda oracle olarak **gerçek etiketler** kullanıldı. API anahtarıyla yapılacak ilk iş: `benchmarks/run.py --oracle anthropic` |
 | **Türkçe veri** | ⚠️ çok dilli model Türkçeyi destekliyor, ama Türkçe benchmark henüz koşulmadı |
 | Ölçeklenme | ⚠️ tek süreç ve SQLite; çoklu sunucu için Postgres desteği yol haritasında |

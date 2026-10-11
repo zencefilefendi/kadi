@@ -2,17 +2,17 @@
 
 This roadmap comes out of a five-engineer review: statistics, ML, systems, security, and research/ecosystem. Each reviewer read the code and documentation independently, and some ran measurements. Items are ordered by priority, and **validity fixes come first**.
 
-## P0: correctness and validity (before any new features)
+## P0: correctness and validity — ✅ done in v0.6
 
-| # | Item | Why | Done when |
+| # | Item | Status in v0.6 | Evidence |
 |---|---|---|---|
-| 1 | **Anytime-valid certification and monitoring** (confidence sequences / betting bounds; Howard et al. 2021, Waudby-Smith & Ramdas 2024) | LTT is re-certified on every sample, so "w.p. ≥ 1−δ" holds only pointwise in time. The drift breaker tests Pr(wrong \| local) with a Wald interval on overlapping windows | False-probation rate ≤ δ′ over 10⁶ simulated decisions; a pinned regression test |
-| 2 | **Certify frozen model snapshots** | Held-out samples shape which escalations train the reflex, so "p̂ independent of calibration" holds only approximately | Simulated violations ≤ δ under adversarial feedback; certificate ↔ model version recorded per decision |
-| 3 | **Checkpointing off the hot path, binary snapshots** | Measured: a 365 MB JSON checkpoint at 150 labels; `json.dumps` takes 6 s **while holding the question lock** | Reflex p99 unchanged during a checkpoint; snapshot ≤ 70 MB |
-| 4 | ~~Remaining security findings V5–V7~~ | Second security review | ✅ **Done in v0.5.1**: contiguous-prefix pruning, per-response CSP script nonce, truncated single-line error echoes |
-| 5 | **Package name** | `kadi` is taken on PyPI (Kadi4Mat); `import kadi` would collide | Publish as `kadi-cascade` with Trusted Publishing; decide on the import name |
+| 1 | **Anytime-valid certification and monitoring** | ✅ LTT certified by betting e-processes with Ville's inequality (time-uniform); the Wald drift breaker is replaced by a Shiryaev–Roberts e-detector on the deployed joint loss, with ARL control. *Criterion adjusted*: the detector guarantees an expected time to false alarm ≥ ARL, not a per-run probability | `test_ltt_certificate_is_anytime_valid` (200 streams × 1,000), `test_drift_detector_false_alarms_and_detection`, `test_drift_alarm_recertifies_and_alerts` |
+| 2 | **Certify frozen model snapshots** | ✅ live / served / candidate versions; each calibrated only on samples drawn after its freeze; δ spent across versions (all certificates hold simultaneously); the model version is recorded per decision **inside the hash chain**. The adversarial-feedback simulation from the original criterion was not run separately: independence now holds by construction, and the engine-level bound tests pass | `TestVersions`, `test_model_version_is_recorded_and_chained`, `TestGuarantee`; 126/126 benchmark runs |
+| 3 | **Checkpointing off the hot path, binary snapshots** | ✅ the lock is held for 11 ms (was 5.82 s); snapshot 43 MB (was 411 MB JSON), written in the background, atomically, SHA-256-verified on load | `test_checkpoint_holds_the_lock_only_briefly`, `test_tampered_snapshot_is_refused`; ENGINEERING §5.5 |
+| 4 | Remaining security findings V5–V7 | ✅ done in v0.5.1 | `TestSecurityRegressionsV2` |
+| 5 | **Package name** | ◐ the distribution is now `kadi-cascade`, and the import name stays `kadi`. **Still open**: publishing to PyPI (needs the maintainer's account and Trusted Publishing setup) and a final decision on the import-name clash with Kadi4Mat | `pyproject.toml` |
 
-All seven findings of the second security review (V1–V7) are fixed in v0.5.1, each with a test in `TestSecurityRegressionsV2`.
+**The price, measured.** Strict validity costs a median of 9.3 points of local share across 36 benchmark configurations (range −1.5 to +19.7). P3 targets this gap.
 
 ## P1: evidence (make the claims credible)
 

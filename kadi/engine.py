@@ -1,23 +1,33 @@
 """The Kadı cascade.
 
     input ──► memory  (exact replay of a past oracle verdict)        ~µs, $0
-          └─► reflex  (local model, answers only if its conformal
-                       prediction set is a single label, the input is
-                       not novel, and the court is not on probation)  ~ms, $0
-          └─► oracle  (frontier model; its verdict trains the reflex
-                       and calibrates the guarantee)                  ~s,  $$
+          └─► reflex  (the SERVED frozen model version answers, only if
+                       its certificate allows it, the input is not
+                       novel, and the court is not on probation)      ~ms, $0
+          └─► oracle  (frontier model; its verdict trains the LIVE
+                       model and calibrates certified versions)       ~s,  $$
           └─► fallback (oracle down + on_oracle_error="best_guess":
                        best local guess, flagged)                     ~ms, $0
 
+Versioned certification (v0.6)
+-------------------------------
+Training never touches the model that answers. A `live` model learns from
+every oracle label; from time to time it is frozen into a `candidate` version
+whose calibrator sees only calibration samples drawn *after* the freeze, so
+the scored model is independent of its calibration data (split-conformal /
+LTT hold exactly, no re-scoring). A candidate that earns a certificate and
+answers at least as often as the served version on the same samples replaces
+it. Certificates spend the failure budget as delta_v = delta * 6/(pi^2 v^2),
+so all of them hold simultaneously with probability >= 1 - delta.
+
 Safety layers, in order:
   * schema lock     - every answer is one of the declared options
-  * conformal set   - local answers only when the error bound allows (marginal
-                      or per-label / Mondrian)
+  * certificate     - conformal singleton or anytime-valid LTT threshold
   * novelty guard   - inputs unlike anything trained on are escalated
-  * audits          - a random slice of local answers is re-asked to the oracle
-  * drift breaker   - if audited disagreement is significantly above target,
-                      the court goes on probation (escalate everything) and an
-                      alert fires
+  * audits          - a random slice of decisions is re-asked to the oracle
+  * drift detector  - Shiryaev-Roberts e-detector on the deployed risk; on
+                      alarm the served version is re-certified on fresh data
+                      and the court escalates in the meantime
   * privacy         - PII redaction before storage/featurization (and
                       optionally before the oracle); keyed HMAC input hashes
 """
@@ -30,6 +40,7 @@ import math
 import os
 import random
 import secrets
+import sys
 import threading
 import time
 import warnings
@@ -37,7 +48,8 @@ from collections import OrderedDict, deque
 from dataclasses import asdict, dataclass
 from typing import Callable
 
-from .conformal import AdaptiveConformal, LearnThenTest, MondrianConformal, conformal_from_state
+from . import snapshot as snapfmt
+from .conformal import DriftDetector, conformal_from_state, make_calibrator, version_delta, would_answer
 from .features import HashingFeaturizer, normalize
 from .learner import OnlineSoftmax
 from .oracles import Oracle, OracleError, Verdict
@@ -45,13 +57,14 @@ from .questions import Question, quote
 from .store import Store, derive_chain_key
 
 MAX_INPUT_CHARS = 32_000
-RESCORE_EVERY = 25          # re-score calibration set after this many training updates...
-RESCORE_BUDGET = 0.10       # ...but spend at most ~10% of wall time re-scoring
-WARMUP_HOLDOUT = 0.25       # share of warm-up oracle labels held out for calibration
-SHADOW_HOLDOUT = 0.20       # same, in shadow mode (every decision has an oracle label)
+FREEZE_MIN = 300             # first candidate after this many training labels
+FREEZE_GROWTH = 2.0         # next candidate once live has seen GROWTH x the served version's data
+PROMOTE_TRIAL = 30          # samples on which a certified candidate must match the served version
+STALE_SAMPLES = 1500        # give up on a candidate that has not certified after this many samples
 TIERS = ("memory", "reflex", "oracle", "fallback")
 PENDING_TTL = 3600.0        # seconds a deferred decision stays resolvable
 MAX_PENDING = 10_000
+SNAPSHOT_FORMAT = 2
 
 
 @dataclass
@@ -80,13 +93,15 @@ class _Case:
     ctx: dict | None
     key: str
     x: dict
-    probs: list[float]
+    probs: list[float]         # from the served version at routing time
     pset_labels: list[str]
-    local: int | None
+    local: int | None          # what the served version answered / would answer
     reason: str
-    sampled: bool
+    sampled: bool              # calibration sample (chosen independently of the input)
     t0: float
     created: float
+    seq: int                   # decision sequence number within the court
+    version: int               # served version id at routing time
 
 
 @dataclass
@@ -106,76 +121,162 @@ class Decision:
         return asdict(self)
 
 
+class _NoCertificate:
+    """Calibrator of version 0 (the untrained initial model): never certifies."""
+    calibrated = False
+    calibration_size = 0
+    alpha_t = 0.0
+    observed = misses = 0
+
+    def prediction_set(self, probs):
+        return list(range(len(probs)))
+
+    def observe(self, probs, y):
+        return True
+
+    def info(self):
+        return {}
+
+    def state(self):
+        return {"kind": "none"}
+
+
+@dataclass(slots=True)
+class _Version:
+    id: int
+    model: object              # frozen snapshot: predict_proba / novelty / seen
+    cal: object                # its own calibrator (or _NoCertificate)
+    frozen_seq: int            # only cases with seq > frozen_seq may calibrate it
+    samples: int = 0
+    trial_n: int = 0
+    trial_self: int = 0
+    trial_served: int = 0
+    served_pmax: list | None = None   # LTT: the served model's max-p on this candidate's samples
+
+    def meta(self) -> dict:
+        return {"id": self.id, "frozen_seq": self.frozen_seq, "samples": self.samples, "trial_n": self.trial_n,
+                "trial_self": self.trial_self, "trial_served": self.trial_served,
+                "served_pmax": self.served_pmax, "cal": self.cal.state()}
+
+
 class _Brain:
-    def __init__(self, q: Question, memory_size: int, reflex=OnlineSoftmax):
+    def __init__(self, q: Question, memory_size: int, reflex, drift_arl: float):
         self.q = q
-        self.model = reflex(len(q.options))
-        self.conformal = (LearnThenTest(q.target_error, q.delta) if q.policy == "ltt"
-                          else MondrianConformal(len(q.options), q.target_error) if q.conditional
-                          else AdaptiveConformal(q.target_error))
+        self.reflex = reflex
+        self.live = reflex(len(q.options))
+        self.versions_issued = 0
+        self.served = _Version(0, self.live.snapshot(), _NoCertificate(), 0)
+        self.candidate: _Version | None = None
+        self.refreeze_floor = 0
+        self.seq = 0
+        self.detector = DriftDetector(q.target_error, drift_arl)
+        self.drift_arl = drift_arl
         self.memory: OrderedDict[str, str] = OrderedDict()
         self.memory_size = memory_size
         self.lock = threading.Lock()
         self.oracle_cost: deque[float] = deque(maxlen=200)
         self.recent_tiers: deque[str] = deque(maxlen=500)
-        self.checks: deque[bool] = deque(maxlen=300)   # audit + shadow agreement, for drift
         self.counts = {t: 0 for t in TIERS}
         self.cost_total = 0.0
         self.audits = self.audit_agree = 0
         self.shadow_n = self.shadow_local = self.shadow_agree = 0
         self.probation = 0
+        self.promotions = 0
         self.last_alert = 0.0
         self.dirty = 0
-        self.updates_since_rescore = RESCORE_EVERY   # force a first rescore (e.g. after a reload)
-        self.last_rescore = 0.0
-        self.rescore_cost = 0.0
         self.last_save = time.time()
         self.last_stats = 0.0
 
+    @property
+    def model(self):           # the learning model (kept for backwards compatibility)
+        return self.live
+
     # all methods below assume self.lock is held
+    def new_version(self, model, seq: int) -> _Version:
+        self.versions_issued += 1
+        q = self.q
+        cal = make_calibrator(q.policy, q.conditional, len(q.options), q.target_error,
+                              version_delta(q.delta, self.versions_issued))
+        return _Version(self.versions_issued, model, cal, seq)
+
+    def maybe_freeze(self) -> None:
+        need = max(FREEZE_MIN, FREEZE_GROWTH * self.served.model.seen, self.refreeze_floor)
+        if self.candidate is None and self.live.seen >= need:
+            self.candidate = self.new_version(self.live.snapshot(), self.seq)
+
     def remember(self, key: str, label: str) -> None:
         self.memory[key] = label
         self.memory.move_to_end(key)
         while len(self.memory) > self.memory_size:
             self.memory.popitem(last=False)
 
-    def learn(self, x, probs, label: str, calibrate: bool) -> None:
-        """Train on an oracle/gold label. Only *randomly sampled* labels may
-        calibrate: escalated examples are a biased sample (their true label is
-        in the set by construction), and calibrating on them makes the
-        threshold ratchet looser and looser."""
-        y = self.q.index(label)
-        if calibrate:
-            self.conformal.observe(x, probs, y)   # held out: never trained on
-        else:
-            self.model.update(x, y)
-            self.updates_since_rescore += 1
-        self.dirty += 1
+    def calibrate(self, c: _Case, y: int) -> None:
+        """Feed one calibration sample to every version frozen before it was drawn."""
+        served, cand = self.served, self.candidate
+        s_probs = None
+        if served.frozen_seq < c.seq and served.id:
+            s_probs = c.probs if served.id == c.version else served.model.predict_proba(c.x)
+        if cand is not None and cand.frozen_seq < c.seq:
+            c_probs = cand.model.predict_proba(c.x)
+            if self.q.policy == "ltt":
+                if cand.served_pmax is None:
+                    cand.served_pmax = []
+                cand.served_pmax.append(max(s_probs) if s_probs is not None else 0.0)
+            elif cand.cal.calibrated and served.cal.calibrated and s_probs is not None:
+                cand.trial_n += 1
+                cand.trial_self += would_answer(cand.cal, c_probs) is not None
+                cand.trial_served += would_answer(served.cal, s_probs) is not None
+            cand.cal.observe(c_probs, y)
+            cand.samples += 1
+        if s_probs is not None:
+            served.cal.observe(s_probs, y)
+            served.samples += 1
+        self._promote_or_retire()
 
-    def refresh(self) -> None:
-        now = time.perf_counter()
-        if (self.updates_since_rescore >= RESCORE_EVERY
-                and now - self.last_rescore >= self.rescore_cost / RESCORE_BUDGET):
-            self.conformal.rescore(self.model.predict_proba)
-            self.last_rescore = time.perf_counter()
-            self.rescore_cost = self.last_rescore - now
-            self.updates_since_rescore = 0
+    def _promote_or_retire(self) -> None:
+        cand = self.candidate
+        if cand is None:
+            return
+        if cand.cal.calibrated:
+            if self.q.policy == "ltt":
+                # Compare on the candidate's own calibration samples: share it would
+                # answer at its certified threshold vs the served version at its own.
+                # Every certificate holds simultaneously (delta spending), so choosing
+                # among certified versions by this rule is safe.
+                served = self.served
+                lam = served.cal.lam if served.cal.calibrated else None
+                pm = cand.served_pmax or []
+                served_share = (sum(p >= lam for p in pm) / len(pm)) if (lam is not None and pm) else 0.0
+                if cand.cal.local_share() >= served_share:
+                    self._promote(cand)
+                elif cand.samples >= STALE_SAMPLES:
+                    self.refreeze_floor = int(self.live.seen * 1.5)
+                    self.candidate = None
+                return
+            if not self.served.cal.calibrated or (cand.trial_n >= PROMOTE_TRIAL
+                                                 and cand.trial_self >= cand.trial_served):
+                self._promote(cand)
+                return
+            if cand.trial_n >= PROMOTE_TRIAL:   # certified but not better: keep the incumbent
+                self.refreeze_floor = int(cand.model.seen * 1.5)
+                self.candidate = None
+        elif cand.samples >= STALE_SAMPLES:
+            self.refreeze_floor = int(self.live.seen * 1.5)
+            self.candidate = None
+
+    def _promote(self, cand: _Version) -> None:
+        cand.served_pmax = None
+        self.served, self.candidate = cand, None
+        self.detector = DriftDetector(self.q.target_error, self.drift_arl)
+        self.promotions += 1
 
     def avg_oracle_cost(self) -> float:
         return sum(self.oracle_cost) / len(self.oracle_cost) if self.oracle_cost else 0.0
 
-    def drift(self) -> tuple[float, float, int]:
-        """(observed disagreement, lower 95% bound, n) over recent checks."""
-        n = len(self.checks)
-        if not n:
-            return 0.0, 0.0, 0
-        rate = 1 - sum(self.checks) / n
-        return rate, rate - 1.96 * math.sqrt(max(rate * (1 - rate), 1e-9) / n), n
-
     def stats(self) -> dict:
         n = len(self.recent_tiers) or 1
-        c = self.conformal
-        rate, lower, nchk = self.drift()
+        c = self.served.cal
+        cand = self.candidate
         return {
             "question": self.q.name, "options": list(self.q.options), "kind": self.q.meta.get("kind"),
             "mode": self.q.mode, "conditional": self.q.conditional, "policy": self.q.policy,
@@ -184,7 +285,12 @@ class _Brain:
             "target_error": self.q.target_error, "alpha_t": round(c.alpha_t, 5),
             "calibration_size": c.calibration_size, "calibrated": c.calibrated,
             "realized_miscoverage": (c.misses / c.observed) if c.observed else None,
-            "trained_on": self.model.seen,
+            "trained_on": self.live.seen,
+            "version": {"served": self.served.id, "served_trained_on": self.served.model.seen,
+                        "candidate": cand.id if cand else None,
+                        "candidate_samples": cand.samples if cand else None,
+                        "candidate_certified": cand.cal.calibrated if cand else None,
+                        "versions_issued": self.versions_issued, "promotions": self.promotions},
             "local_rate_recent": sum(t in ("memory", "reflex") for t in self.recent_tiers) / n,
             "counts": dict(self.counts), "cost_total": self.cost_total,
             "audits": self.audits,
@@ -192,7 +298,7 @@ class _Brain:
             "shadow": {"n": self.shadow_n,
                        "would_be_local": (self.shadow_local / self.shadow_n) if self.shadow_n else None,
                        "agreement": (self.shadow_agree / self.shadow_local) if self.shadow_local else None},
-            "drift": {"disagreement": rate, "lower_bound": lower, "n": nchk},
+            "drift": self.detector.info(),
             "probation": self.probation,
             "avg_oracle_cost": self.avg_oracle_cost(), "memory_entries": len(self.memory),
         }
@@ -200,19 +306,20 @@ class _Brain:
 
 class Kadi:
     def __init__(self, oracle: Oracle, db: str = "kadi.db", *, audit_rate: float = 0.05,
-                 store_inputs: bool = True, redact: bool | Callable[[str], str] = True,
-                 redact_oracle: bool = False, secret: bytes | str | None = None,
-                 on_oracle_error: str = "raise", memory_size: int = 50_000,
-                 checkpoint_seconds: float = 15.0, probation_length: int = 300,
+                 sample_budget: float = 0.05, store_inputs: bool = True,
+                 redact: bool | Callable[[str], str] = True, redact_oracle: bool = False,
+                 secret: bytes | str | None = None, on_oracle_error: str = "raise", memory_size: int = 50_000,
+                 checkpoint_seconds: float = 15.0, probation_length: int = 300, drift_arl: float = 1000.0,
                  alert_hook: Callable[[dict], None] | None = None, seed: int | None = None,
                  featurizer: Callable[[str], dict[int, float]] | None = None, reflex=None):
-        if not 0 <= audit_rate <= 1:
-            raise ValueError("audit_rate must be in [0, 1]")
+        if not 0 <= audit_rate <= 1 or not 0 <= sample_budget <= 1:
+            raise ValueError("audit_rate and sample_budget must be in [0, 1]")
         if on_oracle_error not in ("raise", "best_guess"):
             raise ValueError('on_oracle_error must be "raise" or "best_guess"')
         self.oracle = oracle
         self.store = Store(db)
         self.audit_rate = audit_rate
+        self.sample_budget = sample_budget
         self.store_inputs = store_inputs
         if redact is True:
             from .redact import DEFAULT_REDACTOR
@@ -231,15 +338,17 @@ class Kadi:
         self.memory_size = memory_size
         self.checkpoint_seconds = checkpoint_seconds
         self.probation_length = probation_length
+        self.drift_arl = drift_arl
         self.alert_hook = alert_hook
         self.featurize = featurizer or HashingFeaturizer()
         self.novelty_limit = getattr(self.featurize, "hashed_dim", None)
-        # reflex factory: callable(n_classes) -> model, plus .from_state(dict) -> model
+        # reflex factory: callable(n_classes) -> model, plus .unpack(meta, arrays, prefix, base)
         self.reflex = reflex or OnlineSoftmax
         self.rng = random.Random(seed)
         self._brains: dict[str, _Brain] = {}
         self._reg = threading.Lock()
         self._pending: OrderedDict[str, _Case] = OrderedDict()
+        self._writer = _CheckpointWriter(self)
 
     # ================================================================ public
     def register(self, *questions: Question) -> None:
@@ -302,12 +411,17 @@ class Kadi:
         clean, ctx, key, x = self._prepare(text, context)
 
         with brain.lock:
-            brain.refresh()
+            brain.seq += 1
+            seq = brain.seq
+            brain.maybe_freeze()
+            served = brain.served
             cached = brain.memory.get(key)
-            probs = brain.model.predict_proba(x)
-            pset = brain.conformal.prediction_set(probs)
-            novel = brain.model.novelty(x, self.novelty_limit) > q.novelty_threshold
-            calibrating = not brain.conformal.calibrated
+            probs = served.model.predict_proba(x)
+            pset = served.cal.prediction_set(probs)
+            novel = served.model.novelty(x, self.novelty_limit) > q.novelty_threshold
+            calibrating = not served.cal.calibrated
+            recent = brain.recent_tiers
+            local_share = (sum(t in ("memory", "reflex") for t in recent) / len(recent)) if recent else 0.0
             probation = brain.probation > 0
             if probation and cached is None and q.mode == "live":
                 brain.probation -= 1  # only real (non-replayed) live decisions serve the sentence
@@ -315,17 +429,32 @@ class Kadi:
         if cached is not None:
             return self._finish(brain, clean, key, cached, "memory", "memory", 1.0, [cached], 0.0, t0)
 
-        # Calibration sample: an i.i.d. slice of the stream whose oracle label is held
-        # out for calibration (and, for local answers, doubles as an audit).
-        p_sample = WARMUP_HOLDOUT if calibrating else SHADOW_HOLDOUT if q.mode == "shadow" else self.audit_rate
+        # Calibration sample: chosen by a coin whose bias depends only on the
+        # court's past (never on this input), so samples stay exchangeable with
+        # the traffic. Sampling an escalated case is free (the oracle is called
+        # anyway, and the label still trains the live model afterwards); only
+        # sampled *local* answers cost an extra oracle call. So the rate is set
+        # to keep that extra cost near `sample_budget` calls per decision:
+        # everything is sampled while Kadı rarely answers alone, ~audit_rate
+        # once it answers most cases itself.
+        if calibrating or q.mode == "shadow":
+            p_sample = 1.0
+        else:
+            p_sample = min(1.0, max(self.audit_rate, self.sample_budget / max(local_share, 1e-3)))
         sampled = self.rng.random() < p_sample
         top = max(range(len(probs)), key=probs.__getitem__)
 
         local, reason = None, None
+        if not pset and not calibrating:
+            # An empty set means the oracle's label is outside C(x): a miscoverage
+            # event already paid for in the alpha budget. Answering argmax there
+            # cannot raise Pr(disagree) above Pr(O(x) not in C(x)) <= alpha, and it
+            # keeps the local share monotone in alpha.
+            pset = [top]
         if calibrating:
             reason = "uncalibrated"
         elif len(pset) != 1:
-            reason = "empty_set" if not pset else "ambiguous"
+            reason = "ambiguous"
         elif pset[0] != top:
             reason = "inconsistent"  # singleton that isn't the model's own best guess
         elif novel:
@@ -341,42 +470,43 @@ class Kadi:
         elif local is not None:
             if not sampled:
                 return self._finish(brain, clean, key, q.options[local], "reflex", "confident", probs[local],
-                                    [q.options[local]], 0.0, t0)
+                                    [q.options[local]], 0.0, t0, version=served.id)
             kind, reason = "audit", "audit"
         else:
             kind = "escalate"
         return _Case(brain, kind, text, clean, context, ctx, key, x, probs, pset_labels, local, reason,
-                     sampled, t0, time.monotonic())
+                     sampled, t0, time.monotonic(), seq, served.id)
 
     def _complete(self, c: "_Case", v: Verdict) -> Decision:
         brain, q = c.brain, c.brain.q
-        if c.kind == "shadow":
-            would = q.options[c.local] if c.local is not None else None
-            with brain.lock:
+        would = q.options[c.local] if c.local is not None else None
+        with brain.lock:
+            brain.oracle_cost.append(v.cost_usd)
+            y = q.index(v.label)
+            if c.sampled:
+                brain.calibrate(c, y)
+            if c.sampled or c.kind == "shadow":   # monitor the deployed risk Pr(local and wrong)
+                self._monitor(brain, c, would, v.label)
+            brain.live.update(c.x, y)             # every oracle label trains the live model
+            brain.dirty += 1
+            brain.remember(c.key, v.label)
+            if c.kind == "shadow":
                 brain.shadow_n += 1
                 if would is not None:
                     brain.shadow_local += 1
                     brain.shadow_agree += would == v.label
-                    brain.checks.append(would == v.label)
-                self._absorb(brain, c.key, c.x, c.probs, v, calibrate=c.sampled)
-                self._check_drift(brain)
+            elif c.kind == "audit":
+                brain.audits += 1
+                brain.audit_agree += would == v.label
+        if c.kind == "shadow":
             return self._finish(brain, c.clean, c.key, v.label, "oracle", "shadow", 1.0, c.pset_labels, v.cost_usd,
                                 c.t0, oracle_label=v.label, shadow_label=would,
-                                agreed=None if would is None else int(would == v.label))
+                                agreed=None if would is None else int(would == v.label), version=c.version)
         if c.kind == "audit":
-            label = q.options[c.local]
-            with brain.lock:
-                brain.audits += 1
-                brain.audit_agree += v.label == label
-                brain.checks.append(v.label == label)
-                self._absorb(brain, c.key, c.x, c.probs, v, calibrate=True)
-                self._check_drift(brain)
             # we paid for the oracle's verdict: return it, even if the reflex disagreed
-            return self._finish(brain, c.clean, c.key, v.label, "reflex", "audited", c.probs[c.local], [label],
+            return self._finish(brain, c.clean, c.key, v.label, "reflex", "audited", c.probs[c.local], [would],
                                 v.cost_usd, c.t0, oracle_label=v.label, audited=1,
-                                agreed=int(v.label == label), flagged=int(v.label != label))
-        with brain.lock:
-            self._absorb(brain, c.key, c.x, c.probs, v, calibrate=c.sampled)
+                                agreed=int(v.label == would), flagged=int(v.label != would), version=c.version)
         return self._finish(brain, c.clean, c.key, v.label, "oracle", c.reason, 1.0, c.pset_labels, v.cost_usd,
                             c.t0, oracle_label=v.label)
 
@@ -384,8 +514,8 @@ class Kadi:
         if c.kind == "audit":  # the audit failed, the local answer still stands
             label = c.brain.q.options[c.local]
             return self._finish(c.brain, c.clean, c.key, label, "reflex", "confident", c.probs[c.local], [label],
-                                0.0, c.t0)
-        return self._fallback(c.brain, c.clean, c.key, c.probs, c.pset_labels, c.t0)
+                                0.0, c.t0, version=c.version)
+        return self._fallback(c.brain, c.clean, c.key, c.probs, c.pset_labels, c.t0, c.version)
 
     def decide_many(self, items: list[tuple[Question | str, str, dict | None]]) -> list[Decision | Exception]:
         out: list[Decision | Exception] = []
@@ -398,14 +528,15 @@ class Kadi:
 
     def teach(self, question: Question | str, text: str, label: str, context: dict | None = None) -> None:
         """Feed a gold label (human review, ground truth, backfill). Trains the
-        reflex but never calibrates: you choose which items to label, so they
-        are not a random sample."""
+        live model but never calibrates: you choose which items to label, so
+        they are not a random sample."""
         brain = self._brain(question)
         if label not in brain.q.options:
             raise ValueError(f"label {quote(label)} not in {list(brain.q.options)}")
         _, _, key, x = self._prepare(text, context)
         with brain.lock:
-            brain.learn(x, brain.model.predict_proba(x), label, calibrate=False)
+            brain.live.update(x, brain.q.index(label))
+            brain.dirty += 1
             brain.remember(key, label)
 
     def stats(self) -> list[dict]:
@@ -416,11 +547,14 @@ class Kadi:
         return out
 
     def checkpoint(self) -> None:
+        """Synchronously persist every court (also flushes background writes)."""
         for b in list(self._brains.values()):
             with b.lock:
-                self._save(b)
+                job = self._snapshot_job(b)
+            self._write(job)
 
     def close(self) -> None:
+        self._writer.stop()
         self.checkpoint()
         self.store.close()
 
@@ -462,29 +596,34 @@ class Kadi:
                 raise OracleError(f"{type(e).__name__}: {e}") from e
             return None
 
-    def _absorb(self, b: _Brain, key: str, x, probs, v: Verdict, calibrate: bool) -> None:
-        b.oracle_cost.append(v.cost_usd)
-        b.learn(x, probs, v.label, calibrate)
-        b.remember(key, v.label)
-
-    def _fallback(self, b: _Brain, clean, key, probs, pset_labels, t0) -> Decision:
+    def _fallback(self, b: _Brain, clean, key, probs, pset_labels, t0, version=None) -> Decision:
         i = max(range(len(probs)), key=probs.__getitem__)
         return self._finish(b, clean, key, b.q.options[i], "fallback", "oracle_error", probs[i],
-                            pset_labels, 0.0, t0, flagged=1)
+                            pset_labels, 0.0, t0, flagged=1, version=version)
 
-    def _check_drift(self, b: _Brain) -> None:
-        rate, lower, n = b.drift()
-        if n < 50 or lower <= b.q.target_error:
+    def _monitor(self, b: _Brain, c: _Case, would: str | None, label: str) -> None:
+        """Feed the e-detector with the deployed loss 1{local and wrong} of the
+        version that made this decision (lock held)."""
+        if c.version != b.served.id or not b.served.cal.calibrated:
             return
-        if b.probation == 0:
-            b.probation = self.probation_length
+        loss = 1.0 if (would is not None and would != label) else 0.0
+        if not b.detector.update(loss):
+            return
+        # Alarm: the served model's risk is above target with strong evidence.
+        # Re-certify the same frozen model on data drawn from now on, and
+        # escalate at least `probation_length` decisions meanwhile.
+        info = b.detector.info()
+        b.served = b.new_version(b.served.model, b.seq)
+        b.detector = DriftDetector(b.q.target_error, b.drift_arl)
+        b.probation = max(b.probation, self.probation_length)
         now = time.time()
         if now - b.last_alert < 3600:
             return
         b.last_alert = now
-        alert = {"question": b.q.name, "kind": "drift", "disagreement": round(rate, 4),
-                 "lower_bound": round(lower, 4), "target_error": b.q.target_error, "checks": n,
-                 "action": f"probation for next {b.probation} decisions (all escalated)"}
+        alert = {"question": b.q.name, "kind": "drift", "disagreement": info["observed_risk"],
+                 "lower_bound": None, "target_error": b.q.target_error, "checks": info["observations"],
+                 "detector": info,
+                 "action": f"re-certifying the served model; probation for next {b.probation} decisions"}
         self.store.record_alert(b.q.name, "drift", alert)
         if self.alert_hook:
             threading.Thread(target=self._safe_hook, args=(alert,), daemon=True).start()
@@ -509,58 +648,155 @@ class Kadi:
         with self._reg:
             if q.name in self._brains:
                 return self._brains[q.name]
-            b = _Brain(q, self.memory_size, self.reflex)
+            b = _Brain(q, self.memory_size, self.reflex, self.drift_arl)
             saved = self.store.load_model(q.name)
             if saved and tuple(saved[0]["options"]) == q.options \
                     and saved[0].get("conditional", False) == q.conditional \
                     and saved[0].get("policy", "conformal") == q.policy:
-                st = saved[1]
-                b.model = self.reflex.from_state(st["model"])
-                b.conformal = conformal_from_state(st["conformal"])
-                b.conformal.target = q.target_error
-                b.memory.update(st.get("memory", {}))
-                for k in ("audits", "audit_agree", "shadow_n", "shadow_local", "shadow_agree",
-                          "probation", "cost_total"):
-                    setattr(b, k, st.get(k, getattr(b, k)))
-                b.counts.update(st.get("counts", {}))
-                b.oracle_cost.extend(st.get("oracle_cost", []))
-                b.checks.extend(st.get("checks", []))
+                self._restore(b, saved[1])
             self._brains[q.name] = b
             return b
 
-    def _save(self, b: _Brain) -> None:
-        state = {"model": b.model.state(), "conformal": b.conformal.state(),
+    # ------------------------------------------------------------ persistence
+    def _restore(self, b: _Brain, st: dict) -> None:
+        if st.get("format") == SNAPSHOT_FORMAT:
+            try:
+                blob = self.store.load_snapshot(b.q.name, st["snapshot_sha256"])
+                meta, arrays = snapfmt.loads(blob)
+                b.live = self.reflex.unpack(meta["live"], arrays, "live.")
+                vs = {}
+                for role in ("served", "candidate"):
+                    vm = st.get(role)
+                    if vm is None:
+                        continue
+                    model = self.reflex.unpack(meta[role], arrays, role + ".", base=b.live)
+                    cal = conformal_from_state(vm["cal"]) if vm["cal"].get("kind") != "none" else _NoCertificate()
+                    if hasattr(cal, "target"):
+                        cal.target = b.q.target_error
+                    vs[role] = _Version(vm["id"], model, cal, vm["frozen_seq"], vm["samples"], vm["trial_n"],
+                                        vm["trial_self"], vm["trial_served"], vm.get("served_pmax"))
+                b.served = vs["served"]
+                b.candidate = vs.get("candidate")
+                b.versions_issued, b.seq = st["versions_issued"], st["seq"]
+                b.refreeze_floor, b.promotions = st.get("refreeze_floor", 0), st.get("promotions", 0)
+                b.detector = DriftDetector.from_state(st["detector"])
+            except (OSError, ValueError, KeyError) as e:
+                print(f"kadi: could not restore snapshot for {b.q.name!r} ({e}); starting fresh",
+                      file=sys.stderr)
+                return
+        elif "model" in st:
+            # v0.5 JSON state: keep what the model learned, but re-issue certificates
+            # (old calibration samples were drawn before the current model froze).
+            b.live = self.reflex.from_state(st["model"])
+            b.served = b.new_version(b.live.snapshot(), 0)
+        b.memory.update(st.get("memory", {}))
+        for k in ("audits", "audit_agree", "shadow_n", "shadow_local", "shadow_agree", "probation", "cost_total"):
+            setattr(b, k, st.get(k, getattr(b, k)))
+        b.counts.update(st.get("counts", {}))
+        b.oracle_cost.extend(st.get("oracle_cost", []))
+
+    def _snapshot_job(self, b: _Brain) -> dict:
+        """Everything needed to persist the court, captured cheaply under its
+        lock: frozen versions are immutable, the live model is shallow-copied."""
+        live = b.live.snapshot(keep_optimizer=True)
+        q = b.q
+        state = {"format": SNAPSHOT_FORMAT, "versions_issued": b.versions_issued, "seq": b.seq,
+                 "refreeze_floor": b.refreeze_floor, "promotions": b.promotions,
+                 "served": b.served.meta(), "candidate": b.candidate.meta() if b.candidate else None,
+                 "detector": b.detector.state(),
                  "memory": dict(list(b.memory.items())[-5000:]),
                  "audits": b.audits, "audit_agree": b.audit_agree,
                  "shadow_n": b.shadow_n, "shadow_local": b.shadow_local, "shadow_agree": b.shadow_agree,
-                 "probation": b.probation, "cost_total": b.cost_total, "counts": b.counts,
-                 "oracle_cost": list(b.oracle_cost), "checks": list(b.checks)}
-        q = b.q
-        self.store.save_model(q.name, {"options": list(q.options), "instructions": q.instructions,
-                                       "target_error": q.target_error, "mode": q.mode,
-                                       "conditional": q.conditional, "policy": q.policy}, state)
-        self.store.save_qstats(q.name, b.stats())
+                 "probation": b.probation, "cost_total": b.cost_total, "counts": dict(b.counts),
+                 "oracle_cost": list(b.oracle_cost)}
+        spec = {"options": list(q.options), "instructions": q.instructions, "target_error": q.target_error,
+                "mode": q.mode, "conditional": q.conditional, "policy": q.policy}
         b.dirty = 0
         b.last_save = b.last_stats = time.time()
+        return {"name": q.name, "spec": spec, "state": state, "stats": b.stats(), "live": live,
+                "served": b.served.model, "candidate": b.candidate.model if b.candidate else None}
+
+    def _write(self, job: dict) -> None:
+        """Pack and persist a captured job. Runs without any court lock."""
+        meta, arrays = {}, {}
+        m, a = job["live"].pack("live.")
+        meta["live"] = m
+        arrays.update(a)
+        for role in ("served", "candidate"):
+            model = job[role]
+            if model is not None:
+                m, a = model.pack(role + ".", base=job["live"], trainable=False)
+                meta[role] = m
+                arrays.update(a)
+        blob = snapfmt.dumps(meta, arrays)
+        sha = self.store.save_snapshot(job["name"], blob)
+        state = dict(job["state"], snapshot_sha256=sha, snapshot_bytes=len(blob))
+        self.store.save_model(job["name"], job["spec"], state)
+        self.store.save_qstats(job["name"], job["stats"])
 
     def _finish(self, b: _Brain, clean, key, label, tier, reason, conf, pset, cost, t0,
-                oracle_label=None, shadow_label=None, audited=0, agreed=None, flagged=0) -> Decision:
+                oracle_label=None, shadow_label=None, audited=0, agreed=None, flagged=0,
+                version=None) -> Decision:
         latency = (time.perf_counter() - t0) * 1000
         did = self.store.record(
             ts=time.time(), question=b.q.name, input_hash=key,
             preview=(" ".join(clean.split())[:160] if self.store_inputs else None),
             label=label, tier=tier, reason=reason, confidence=round(conf, 5), set_size=len(pset),
             oracle_label=oracle_label, shadow_label=shadow_label, audited=audited, agreed=agreed,
-            flagged=flagged, cost=cost, latency_ms=round(latency, 3))
+            flagged=flagged, cost=cost, latency_ms=round(latency, 3), model_version=version)
+        job = None
         with b.lock:
             b.recent_tiers.append(tier)
             b.counts[tier] += 1
             b.cost_total += cost
             now = time.time()
             if b.dirty and now - b.last_save > self.checkpoint_seconds:
-                self._save(b)
+                job = self._snapshot_job(b)
             elif now - b.last_stats > 1.0:
                 self.store.save_qstats(b.q.name, b.stats())
                 b.last_stats = now
+        if job is not None:
+            self._writer.submit(job)   # packed and written off the request path
         return Decision(did, b.q.name, label, tier, round(conf, 5), pset, cost, round(latency, 3),
                         reason, bool(flagged))
+
+
+class _CheckpointWriter:
+    """Single background thread that packs and writes checkpoints. Jobs are
+    coalesced per court (only the newest matters), so a slow disk can never
+    queue up work or block decisions."""
+
+    def __init__(self, engine: Kadi):
+        self.engine = engine
+        self.jobs: dict[str, dict] = {}
+        self.cv = threading.Condition()
+        self.alive = True
+        self.thread: threading.Thread | None = None
+
+    def submit(self, job: dict) -> None:
+        with self.cv:
+            self.jobs[job["name"]] = job
+            if self.thread is None:
+                self.thread = threading.Thread(target=self._run, name="kadi-checkpoint", daemon=True)
+                self.thread.start()
+            self.cv.notify()
+
+    def _run(self) -> None:
+        while True:
+            with self.cv:
+                while self.alive and not self.jobs:
+                    self.cv.wait()
+                if not self.jobs and not self.alive:
+                    return
+                _, job = self.jobs.popitem()
+            try:
+                self.engine._write(job)
+            except Exception as e:  # never kill the writer; the next checkpoint retries
+                print(f"kadi: checkpoint of {job['name']!r} failed: {type(e).__name__}: {e}", file=sys.stderr)
+
+    def stop(self) -> None:
+        with self.cv:
+            self.alive = False
+            self.cv.notify_all()
+        if self.thread is not None:
+            self.thread.join(timeout=60)

@@ -8,7 +8,7 @@
     redact_oracle = false      # also redact what is sent to the oracle
     on_oracle_error = "best_guess"   # or "raise"
     retention_days = 30
-    reflex = "hashed"          # or "embed": semantic k-NN + embeddings (pip install "kadi[embed]")
+    reflex = "hashed"          # or "embed": semantic k-NN + embeddings (pip install "kadi-cascade[embed]")
     # embed_model = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
     [server]

@@ -4,6 +4,48 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-10-11
+
+Roadmap **P0**: the guarantee becomes exact and holds at every point in time. Existing databases upgrade in place. Learned models are kept, but certificates are re-issued, because v0.5 calibration samples predate the frozen versions.
+
+### Changed (statistics)
+- **Frozen model versions.**
+  - A live model learns from every oracle label; only frozen snapshots answer.
+  - Each version is calibrated only on samples drawn *after* its freeze, and nothing is re-scored. Model–calibration independence now holds exactly.
+  - A certified candidate replaces the served version when it answers at least as often on the same samples.
+- **Anytime-valid Learn then Test.** Thresholds are certified by betting e-processes with Ville's inequality, so the certificate holds uniformly over time, not pointwise.
+- **δ spending across versions.** δ_v = δ·6/(π²v²), so all certificates ever issued hold simultaneously with probability ≥ 1 − δ.
+- **Drift e-detector.** A Shiryaev–Roberts e-detector on the deployed joint loss Pr(local ∧ wrong) controls the expected time to a false alarm (`drift_arl`, default 1,000). On alarm the served version is re-certified, the court goes on probation and an alert is sent. It replaces the Wald test on Pr(wrong | local).
+- **Empty-set rule.** An empty conformal set answers the argmax. This is free against α and keeps the local share monotone in α; a replay test had shown the old behaviour falling as α loosened.
+- **Calibration sampling.** The rate depends only on the past: everything is sampled while uncertified or in shadow mode, otherwise `sample_budget / recent local share`. Calibration labels also train the live model afterwards. `candidate_rate` is replaced by `sample_budget`; `WARMUP_HOLDOUT` and `SHADOW_HOLDOUT` are removed.
+
+### Changed (systems)
+- **Off-lock binary checkpoints.** State is captured under the lock in ~10 ms, then packed (float32, with rows deduplicated against the live model) and written in the background. Files sit next to the database, are written atomically and have their SHA-256 recorded in SQLite; a tampered file is refused.
+- **Measured at CLINC150 scale:** the lock is held for 11 ms (was 5.82 s), and a snapshot is 43 MB (was a 411 MB JSON file).
+- **Ledger.** Every local decision records its model version inside the HMAC chain (`chain_fmt` 2). Older rows keep verifying with their original column set.
+- **Distribution renamed `kadi-cascade`.** `kadi` on PyPI belongs to Kadi4Mat; the import name stays `kadi`.
+- **Dashboard and MCP** show the served and candidate versions and the drift monitor.
+
+### Results
+- **Validity.** On Banking77 and CLINC150 (3 seeds, full datasets) the bound held in **126/126** runs.
+- **Savings at α = 5%.** bge + k-NN with conformal removes 65% / 79% of oracle calls; with the time-uniform LTT certificate, 61% / 73%.
+- **Cost of strict validity.** Compared with v0.5, the local share falls by a median of 9.3 points (range −1.5 to +19.7) across 36 configurations. ENGINEERING §5.5 shows how this was engineered down from an initial ~30-point loss.
+
+### Correction
+- The v0.5.1 release notes said the dashboard had been checked in a browser under the new CSP. That check most likely ran against an older copy of the code: the preview tool started the server from a stale working directory. The nonce behaviour itself was verified over HTTP by `test_v6_dashboard_uses_a_script_nonce_not_unsafe_inline`. In v0.6.0 the dashboard was rendered in a browser from this repository: the page served a per-response nonce, the scripts ran and no CSP violations were reported.
+
+### Tests
+- 102 tests. New:
+  - time-uniform LTT validity by simulation;
+  - exact certification time;
+  - δ-spending sum;
+  - e-detector ARL and detection;
+  - frozen versions, promotions and restart;
+  - tampered snapshots;
+  - checkpoint lock time;
+  - end-to-end drift alarm and recovery;
+  - model version inside the chain.
+
 ## [0.5.1] — 2026-10-11
 
 Security and documentation release. Calibration and decisions are unchanged, and existing databases upgrade in place.

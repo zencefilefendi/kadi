@@ -6,6 +6,7 @@ frontier model answers, this model gets one gradient step closer to it.
 from __future__ import annotations
 
 import math
+from array import array
 
 
 class OnlineSoftmax:
@@ -58,6 +59,58 @@ class OnlineSoftmax:
             self.w[f] = [r - lr * gi / sqrt(a) for r, gi, a in zip(row, g, acc)]
             self.g[f] = acc
         self.seen += 1
+
+    # -------------------------------------------------------------- snapshots
+    def snapshot(self, keep_optimizer: bool = False) -> "OnlineSoftmax":
+        """Frozen copy for serving, in O(#features) pointer copies. update()
+        replaces rows instead of mutating them, so rows are shared, not copied:
+        a snapshot costs a dict copy, and unchanged rows stay identical objects
+        (which `pack(base=live)` uses to store only the rows that differ)."""
+        s = OnlineSoftmax(self.k, self.lr, self.l2)
+        s.w = dict(self.w)
+        if keep_optimizer:          # for checkpoints of the live model
+            s.g = dict(self.g)
+        s.b = list(self.b)
+        s.gb = list(self.gb)
+        s.seen = self.seen
+        return s
+
+    def pack(self, prefix: str, base: "OnlineSoftmax | None" = None, trainable: bool = True):
+        """-> (meta, arrays) for kadi.snapshot. With `base`, only rows that are
+        not the very same object as in `base` are written."""
+        ids = array("q", self.w.keys())
+        changed = [f for f, r in self.w.items() if base is None or base.w.get(f) is not r]
+        w = array("f")
+        for f in changed:
+            w.extend(self.w[f])
+        arrays = {prefix + "ids": ids, prefix + "changed": array("q", changed), prefix + "w": w}
+        if trainable:
+            g = array("f")
+            for f in changed:
+                g.extend(self.g.get(f) or [1e-8] * self.k)
+            arrays[prefix + "g"] = g
+        meta = {"k": self.k, "lr": self.lr, "l2": self.l2, "seen": self.seen, "b": self.b, "gb": self.gb,
+                "trainable": trainable, "based": base is not None}
+        return meta, arrays
+
+    @classmethod
+    def unpack(cls, meta: dict, arrays: dict, prefix: str, base: "OnlineSoftmax | None" = None):
+        k = meta["k"]
+        m = cls(k, meta["lr"], meta["l2"])
+        m.b, m.gb, m.seen = list(meta["b"]), list(meta["gb"]), meta["seen"]
+        changed = arrays[prefix + "changed"]
+        w = arrays[prefix + "w"]
+        rows = {f: w[i * k:(i + 1) * k].tolist() for i, f in enumerate(changed)}
+        if meta.get("based"):
+            if base is None:
+                raise ValueError("snapshot was packed against a base model")
+            m.w = {f: rows[f] if f in rows else base.w[f] for f in arrays[prefix + "ids"]}
+        else:
+            m.w = rows
+        if meta.get("trainable"):
+            g = arrays[prefix + "g"]
+            m.g = {f: g[i * k:(i + 1) * k].tolist() for i, f in enumerate(changed)}
+        return m
 
     def state(self) -> dict:
         return {"k": self.k, "lr": self.lr, "l2": self.l2, "b": self.b, "gb": self.gb,

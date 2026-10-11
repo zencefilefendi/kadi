@@ -3,8 +3,8 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "kadi"
-version = "0.5.1"
+name = "kadi-cascade"   # import name stays `kadi`; PyPI "kadi" belongs to Kadi4Mat
+version = "0.6.0"
 description = "A calibrated judge in front of your frontier LLM: routine decisions answered locally with a conformal-prediction guarantee."
 readme = "README.md"
 license = { text = "Apache-2.0" }

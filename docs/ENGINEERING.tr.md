@@ -10,7 +10,7 @@ LLM ajanları çok sayıda küçük, çoktan seçmeli karar verir. Frontier mode
 
 Kadı üç katmanlı bir kaskattır: önce birebir hafıza, sonra yerel refleks, en son oracle. Refleks, **yalnızca istatistiksel bir test** yerel cevabın oracle ile ayrışmasını kullanıcının seçtiği α'nın altında tuttuğunu sertifikaladığında cevap verir. Geri kalan her şey oracle'a gider ve her yükseltme refleksi eğitir.
 
-İki açık niyet sınıflandırma benchmark'ında Kadı, **α = %5'te oracle çağrılarının %75–85'ini ortadan kaldırdı**. Hata sınırı **126 koşunun 126'sında** tuttu.
+v0.6'dan itibaren kararları yalnızca **dondurulmuş** model sürümleri veriyor. Her sürüm, dondurulduktan sonra gelen verilerle sertifikalanıyor; Learn-then-Test sertifikası da zamanın her anında geçerli. İki açık niyet sınıflandırma benchmark'ında Kadı, **α = %5'te oracle çağrılarının %65–79'unu ortadan kaldırdı**; her an geçerli LTT sertifikasıyla bu oran %61–73. Hata sınırı **126 koşunun 126'sında** tuttu.
 
 ## 2. Sürüm geçmişi
 
@@ -22,6 +22,8 @@ Kadı üç katmanlı bir kaskattır: önce birebir hafıza, sonra yerel refleks,
 | 0.4 | Anlamsal refleks: cümle embedding'leri + k-NN (isteğe bağlı ek paket) |
 | 0.4.1 | Belge yaması: durum ve sınırlar, yeniden ölçülen demo |
 | 0.5 | **Ajanın oracle olduğu** MCP sunucusu (API anahtarı gerekmez) |
+| 0.5.1 | İkinci güvenlik denetimi (V1–V7 düzeltildi), beş mühendislik yol haritası, istatistiksel kısıtların belgelenmesi |
+| 0.6 | **Yol haritası P0**: dondurulmuş model sürümleri, her an geçerli LTT, e-detektör, sürümler arası δ harcaması, boş küme kuralı, uyarlamalı bedava örnekleme, kilit dışı ikili checkpoint, `kadi-cascade` dağıtım adı |
 
 ## 3. Kullanılan teknikler
 
@@ -29,14 +31,15 @@ Kadı üç katmanlı bir kaskattır: önce birebir hafıza, sonra yerel refleks,
 
 | Teknik | Nerede | Neden | Kaynak |
 |---|---|---|---|
-| Split conformal tahmin | `kadi/conformal.py` | Herhangi bir skoru, kapsaması ≥ 1 − α olan tahmin kümelerine çevirir; yalnızca tek elemanlı kümede cevap vermek ayrışmayı sınırlar | Vovk vd. 2005; Papadopoulos vd. 2002; Lei vd. 2018 |
-| Adaptive Conformal Inference | aynı dosya, `alpha_t` | Trafik değiştikçe uzun dönem kapsamamayı α civarında tutar | Gibbs & Candès 2021 |
+| Split conformal tahmin | `kadi/conformal.py` | Herhangi bir skoru, kapsaması ≥ 1 − α olan kümelere çevirir; yalnızca \|C(x)\| ≤ 1 olduğunda cevap vermek ayrışmayı sınırlar | Vovk vd. 2005; Papadopoulos vd. 2002; Lei vd. 2018 |
+| Boş küme kuralı (v0.6) | `engine._route` | Boş küme zaten bir kapsamama olayıdır; orada en olası etiketi vermek α'ya hiçbir şey eklemez ve yerel oranı α'ya göre tutarlı (monoton) kılar | — |
+| Adaptive Conformal Inference | `alpha_t` | Trafik değiştikçe uzun dönem kapsamamayı α civarında tutar | Gibbs & Candès 2021 |
 | Mondrian (etiket başına) conformal | `MondrianConformal` | Nadir ama kritik bir etikete kendi sınırını verir | Vovk 2012 |
-| **Learn then Test** | `LearnThenTest` | PAC tipi garanti: risk ≤ α, **≥ 1 − δ olasılıkla**. Karar riskini doğrudan test ettiği için daha çok yerel cevap verir | Angelopoulos, Bates, Candès, Jordan & Lei 2021 |
-| Kesin binom p-değerleri, sabit sıralı test | `binom_cdf`, `LTT_GRID` | Normal yaklaşımı gerektirmeyen geçerli test; eşik ızgarası LTT'nin gerektirdiği gibi önceden sabitlenmiştir | — |
-| **Eğitimden ayrı, rastgele kalibrasyon** | `engine.py` | Kalibrasyon verisi akıştan rastgele seçilmeli ve modelin eğitiminde hiç kullanılmamalıdır (§5.1) | — |
-| Zaman bütçeli yeniden puanlama | `_Brain.refresh` | Saklanan kalibrasyon girdilerini güncel modelle yeniden puanlar; toplam sürenin en fazla ~%10'unu kullanır | — |
-| Tutarlılık kuralı | `_route` | Tek elemanlı küme modelin en olası etiketiyle uyuşmazsa karar oracle'a gider. Oracle'a göndermek hiçbir zaman hata eklemez | — |
+| **Her an geçerli Learn then Test** (v0.6) | `LearnThenTest` | Her eşik için bahis e-süreci ve Ville eşitsizliği: risk ≤ α, ≥ 1 − δ olasılıkla, **zamanın her anında birden** | Angelopoulos vd. 2021; Ramdas vd. 2023; Waudby-Smith & Ramdas 2024 |
+| **Dondurulmuş model sürümleri** (v0.6) | `engine._Brain` (`live`, `served`, `candidate`) | Puanlayan model kalibrasyon verisinden gerçekten bağımsız: her sürüm yalnızca dondurulduktan sonra gelen örneklerle kalibre edilir; hiçbir şey yeniden puanlanmaz | — |
+| **Sürümler arası δ harcaması** (v0.6) | `version_delta` | δ_v = δ·6/(π²v²) toplamı δ'dır; tüm sertifikalar aynı anda geçerli olur, terfi kuralı ne olursa olsun güvenlidir | — |
+| Girdiden bağımsız rastgele örnekleme | `engine._route` | Kalibrasyon yazı-turası yalnızca geçmişe bağlıdır (§5.1); oracle'a giden kararlar bedavaya örneklenir, yerel cevaplar `sample_budget` içinde kalır | — |
+| Tutarlılık kuralı | `_route` | Tek elemanlı küme modelin en olası etiketiyle uyuşmazsa karar oracle'a gider | — |
 
 ### 3.2 Refleks (yerel model)
 
@@ -53,7 +56,7 @@ Kadı üç katmanlı bir kaskattır: önce birebir hafıza, sonra yerel refleks,
 | Teknik | Neden |
 |---|---|
 | Rastgele denetimler | Canlı trafikteki gerçek uyuşmayı ölçer; panel bunu varsayım olarak değil, ölçüm olarak gösterir |
-| Sapma kesicisi | Denetimde ölçülen ayrışmanın %95 alt sınırı α'yı aşarsa gözetim moduna geçer (her şey oracle'a gider) ve webhook alarmı gönderir |
+| **Sapma e-detektörü** (v0.6) | Sunulan sürümün birleşik riski Shiryaev–Roberts e-detektörüyle izlenir; yanlış alarmın beklenen zamanı ≥ ARL. Alarmda sunulan sürüm yeniden sertifikalanır, gözetim moduna geçilir ve webhook alarmı gider (Shin, Ramdas & Rinaldo) |
 | Gölge mod ve replay | Canlıya almadan önce değeri risksiz kanıtlar |
 | Fallback | Oracle çöktüğünde işaretli yerel cevap döner |
 | Kurcalanamaz defter | Her karar bir öncekine HMAC ile zincirlenir; `kadi verify` ve `kadi anchor` |
@@ -62,12 +65,16 @@ Kadı üç katmanlı bir kaskattır: önce birebir hafıza, sonra yerel refleks,
 | Prompt injection ayraçları | Kullanıcı metni oracle'a "güvenilmez veri" olarak işaretlenmiş gider; çıktı, tanımlı seçeneklere kilitlidir |
 | **Ajanın oracle olduğu** iki aşamalı API | MCP üzerinden çağıran model oracle'ın kendisidir; kör denetimler ölçülen uyuşmayı dürüst tutar |
 | Tedarik zinciri | Çekirdekte sıfır bağımlılık; benchmark verileri SHA-256 ile sabitlenmiş |
+| **Kilit dışı ikili checkpoint** (v0.6) | Kilit altında ~10 ms'lik yakalama; paketleme (float32, canlı modelle ortak satırlar tekrar yazılmaz) ve atomik yazma arka planda; SHA-256 SQLite'ta saklanır, kurcalanmış dosya reddedilir |
 
 ## 4. Başarı oranları
 
 ### 4.1 Açık benchmark'lar
 
-**Düzenek.** Banking77'de 77 niyet ve 13.083 sorgu, CLINC150'de 150 niyet ve 22.500 sorgu var. Her veri seti tohumlu rastgele bir sırayla bir kez akıtıldı. Oracle olarak veri setinin kendi etiketi kullanıldı; bu yüzden *hata* hem oracle ile ayrışma hem de gerçek doğruya göre hatadır. Değerler 0–2 tohumlarının ortalamasıdır ve denetim oranı %5'tir. *Çağrı/karar* sütunu, denetimler dahil karar başına oracle çağrısını gösterir; her kararı oracle'a sormak 1,00 demektir.
+**Düzenek.**
+- **Veri setleri.** Banking77'de 77 niyet ve 13.083 sorgu, CLINC150'de 150 niyet ve 22.500 sorgu var.
+- **Yöntem.** Her veri seti tohumlu rastgele bir sırayla bir kez akıtıldı. Oracle olarak veri setinin kendi etiketi kullanıldı; bu yüzden *hata* hem oracle ile ayrışma hem de gerçek doğruya göre hatadır. Değerler v0.6 motoruyla, 0–2 tohumlarının ortalamasıdır.
+- **Çağrı** = karar başına oracle çağrısı, denetimler dahil; her kararı oracle'a sormak 1,00 demektir.
 
 **α = %5:**
 
@@ -75,28 +82,24 @@ Kadı üç katmanlı bir kaskattır: önce birebir hafıza, sonra yerel refleks,
 |---|---|---|---|
 | — | saf eşik τ = 0,5 (garantisiz) | %85,9 / **%18,80** / 0,14 | %87,2 / **%10,41** / 0,13 |
 | — | elle ayarlanmış eşik τ = 0,9 (garantisiz) | %65,4 / %2,89 / 0,35 | %73,5 / %1,47 / 0,27 |
-| n-gram | conformal | %54,7 / %1,28 / 0,48 | %74,7 / %2,16 / 0,29 |
-| n-gram | LTT | %63,9 / %2,47 / 0,39 | %79,5 / %3,19 / 0,25 |
-| MiniLM + k-NN | LTT | %70,7 / %1,82 / 0,33 | %81,9 / %2,58 / 0,22 |
-| **bge-small + k-NN** | **LTT** | **%79,6 / %2,14 / 0,25** | **%89,8 / %3,18 / 0,15** |
-
-**bge-small + k-NN refleksiyle, farklı α değerlerinde LTT:**
-
-| α | Banking77 yerel / hata | CLINC150 yerel / hata |
-|---|---|---|
-| %2 | %61,2 / %0,54 | %80,3 / %0,72 |
-| %5 | %79,6 / %2,14 | %89,8 / %3,18 |
-| %10 | %89,3 / %6,14 | %94,1 / %6,19 |
+| n-gram | conformal | %46,7 / %1,15 / 0,58 | %64,2 / %1,69 / 0,41 |
+| n-gram | LTT | %49,1 / %1,66 / 0,56 | %65,2 / %1,72 / 0,40 |
+| MiniLM + k-NN | conformal | %63,8 / %2,46 / 0,42 | %77,4 / %3,27 / 0,28 |
+| MiniLM + k-NN | LTT | %57,4 / %1,92 / 0,48 | %71,4 / %1,14 / 0,34 |
+| **bge-small + k-NN** | **conformal** | **%70,2 / %2,52 / 0,35** | **%84,7 / %3,40 / 0,21** |
+| **bge-small + k-NN** | **LTT** | **%66,2 / %1,74 / 0,39** | **%78,1 / %1,32 / 0,27** |
 
 **Öne çıkan rakamlar:**
 
 | Ölçüt | Değer |
 |---|---|
 | Garantinin tuttuğu koşu | **126 / 126**, her tohum ayrı ayrı kontrol edildi |
-| α = %5'te ortadan kalkan oracle çağrısı (en iyi yapılandırma) | **%75** (Banking77), **%85** (CLINC150) |
-| Anlamsal refleksin oracle çağrısına etkisi (α = %5) | −%36 (Banking77), −%40 (CLINC150) |
-| LTT ve conformal karşılaştırması | 18 yapılandırmanın 16'sında LTT en az conformal kadar çok kararı yerelde verdi; kalan 2'si bir standart sapmanın içinde |
+| α = %5'te ortadan kalkan oracle çağrısı (en iyi yapılandırma) | **%65** (Banking77), **%79** (CLINC150) bge + conformal ile; her an geçerli LTT ile %61 / %73 |
+| Katı geçerliliğin yerel orana bedeli (v0.6 ve v0.5) | 36 yapılandırmada medyan 9,3 puan (aralık −1,5 ile +19,7) |
+| Conformal ve LTT | Conformal 18 yapılandırmanın 13'ünde daha çok yerel karar verdi (garantisi daha zayıf) |
 | Saf güven eşiği | Hiçbir uyarı vermeden %10–19 hata |
+
+v0.5 rakamları git geçmişinde, `v0.5.1` etiketinde duruyor.
 
 ### 4.2 Simüle destek masası
 
@@ -104,8 +107,10 @@ Kadı üç katmanlı bir kaskattır: önce birebir hafıza, sonra yerel refleks,
 
 | | Yerel | Denetimde uyuşma | Gerçekleşen kapsamama | Yalnız oracle'a göre harcama |
 |---|---|---|---|---|
-| `route_ticket` (marjinal, α = %5) | %94,3 | %99,1 | %3,0 | $6,83 / $72 |
-| `is_urgent` (etiket başına, α = %5) | %62,6 | %97,8 | %3,7 | $28,09 / $72 |
+| `route_ticket` (marjinal, α = %5) | %77,8 | %94,9 | %6,3 | $19,96 / $72 |
+| `is_urgent` (etiket başına, α = %5) | %52,2 | %95,5 | %5,5 | $36,73 / $72 |
+
+v0.6 ile ölçüldü. Denetimlerden tahmin edilen karar düzeyindeki hata, yani yerel oran × denetimde ayrışma, **%4,0 ve %2,3** ile α'nın altında. Kalibrasyon örneklerindeki küme kapsamaması ise α'nın biraz üstünde. Ortalamada geçerli bir garanti buna izin verir: koşu bir kesinti, bir kayma ve gürültülü bir oracle içeriyor (bkz. THEORY §7c, §9). v0.4'e göre (%94,3 / %62,6 yerel) burada da katı geçerliliğin bedeli görülüyor.
 
 ### 4.3 Ajanın oracle olduğu MCP
 
@@ -117,7 +122,7 @@ Kadı üç katmanlı bir kaskattır: önce birebir hafıza, sonra yerel refleks,
 
 - **Belirti.** Canlı panelde etiket başına garantili `is_urgent` sorusunda denetim uyuşması **%42** çıktı. Vaat edilen değer %95'ti.
 - **Sebep.** Kalibrasyon yalnızca oracle'a gönderilen örneklerden besleniyordu. Bir örnek, tahmin kümesi birden fazla etiket içerdiği *için* oracle'a gider; bu yüzden doğru etiket tanım gereği zaten kümenin içindedir. Sistem kapsamanın mükemmel olduğunu sandı ve eşiği gevşetti. Kümeler küçüldü, gözlenmeyen yanlış yerel cevaplar arttı ve döngü kendi kendini besledi.
-- **Düzeltme.** Kalibrasyon artık akıştan rastgele seçilen ve eğitimde hiç kullanılmayan örneklerle yapılıyor. Saklanan girdiler güncel modelle yeniden puanlanıyor.
+- **Düzeltme.** Kalibrasyon artık akıştan rastgele seçilen ve eğitimde hiç kullanılmayan örneklerle yapılıyor. v0.2–v0.5'te saklanan girdiler güncel modelle yeniden puanlanıyordu. v0.6'dan itibaren her dondurulmuş sürüm yalnızca kendinden sonra gelen örneklerle kalibre ediliyor; hiçbir şey yeniden puanlanmıyor.
 - **Kalıcılık.** `TestGuarantee` testi, bu hatanın geri dönmesini engelliyor.
 
 ### 5.2 Oracle'ın gürültü tabanı
@@ -151,7 +156,37 @@ Beş mühendislik yol haritası çalışması sırasında yapılan ikinci bağı
 
 Aynı inceleme THEORY §7c'deki istatistiksel kısıtları da ortaya çıkardı.
 
-### 5.5 Diğer dersler
+### 5.5 v0.6: Katı geçerliliğin bedeli ve bedelin mühendislikle düşürülmesi
+
+Yol haritasındaki P0 maddeleri (dondurulmuş sürümler, her an geçerli sertifika, ARL kontrollü dedektör) garantiyi tam hale getiriyor. Bunun bedeli ayrı ayar tohumlarında ölçüldü (Banking77, 4.000 karar, LTT α = %5) ve üç adımda düşürüldü:
+
+| Adım | n-gram yerel | bge + k-NN yerel |
+|---|---|---|
+| v0.5 (yaklaşık geçerlilik) | %37,2* | %56,0* |
+| v0.6 ilk deneme: sabit %5–10 örnekleme | %10,1* | %22,2* |
+| + oracle'a giden kararları bedava örneklemek, `sample_budget`'a göre uyarlamalı oran | %21,0* | %37,2* |
+| + LTT'de yerel paya göre terfi, ilk dondurma 300 etikette | ~%24–25 | ~%44–46 |
+
+<sub>*0–1 tohumlarında ölçüldü. Sonraki satırlar 100–101 ayar tohumlarında ölçüldü; son yapılandırma §4.1'deki rakamlar için 0–2 tohumlarında yalnızca bir kez değerlendirildi.</sub>
+
+Her adımın dayandığı fikir:
+
+1. **Bedava örnekleme.** Her kalibrasyon etiketi, kendinden önce dondurulmuş sürümleri kalibre ettikten *sonra* canlı modeli de eğitebiliyor. Bu yüzden oracle'a giden bir kararı örneklemek bedava. Oran geçmişe (son yerel paya) bağlı olabilir, mevcut girdiye asla.
+2. **Paya göre terfi.** δ harcaması tüm sertifikaları aynı anda geçerli kıldığı için, adayın kendi örnekleri üzerinde daha sık cevap veren sertifikalı sürüm güvenle seçilebiliyor.
+3. **Boş küme kuralı.** Bir replay testi, α gevşedikçe conformal'ın yerel oranının *düştüğünü* gösterdi: sıkılaşan eşikler boş kümeler üretiyor, bunlar da oracle'a gidiyordu. Boş küme zaten bir kapsamama olayı; orada en olası etiketi vermek α'ya hiçbir şey eklemiyor. Düzeltmeyle tutarlılık geri geldi.
+
+Kalan fark, tam ve her an geçerli bir garantinin dürüst bedeli. Yol haritasının P3'ü (öğrenilmiş seçim skoru, uyarlamalı bahis, soğuk başlangıç tohumları) bu farkı hedefliyor.
+
+**Checkpoint.** CLINC150 ölçeğinde bir mahkemede ölçüldü: 75 bin özellik × 120 etiket, 14 sürüm.
+
+| | v0.5 (JSON, kilit altında) | v0.6 (ikili, arka planda) |
+|---|---|---|
+| Kilidin tutulduğu süre | **5,82 s** | **0,011 s** |
+| Boyut | 411 MB | **43 MB** |
+| Yazma | kilit altında | 1,71 s, kilit dışında |
+| Yükleme | — | 0,75 s |
+
+### 5.6 Diğer dersler
 
 - **Hiç tetiklenmeyen sapma testi.** Oracle etiketleri ters çevirdiğinde Kadı ~40 kararda yeniden öğrendi; kesicinin devreye girmemesi doğru davranıştı. Test, kesiciyi doğrudan sınayacak şekilde yeniden yazıldı.
 - **Etiket başına garanti 77–150 etikette ölçeklenmiyor.** Her etiketin kendi kanıtını toplaması gerekiyor. Bu durum belgelendi: az etiketli sorularda kullanılmalı.
@@ -162,10 +197,15 @@ Aynı inceleme THEORY §7c'deki istatistiksel kısıtları da ortaya çıkardı.
 
 | Kontrol | Sonuç |
 |---|---|
-| Birim, entegrasyon, güvenlik regresyonu ve MCP testleri | **95 test**; numpy gerektiren 2 test standart Python ortamında atlanıyor |
-| LTT sertifikasının geçerliliği | 300 simülasyonda yanılma oranı δ sınırında kaldı (test toleransı +0,03) |
-| CI | Python 3.11, 3.12, 3.13; anlamsal refleks; TypeScript tip denetimi; Docker. v0.5.0'da hepsi yeşil |
-| Defter bütünlüğü | Değiştirilmiş, silinmiş ve araya eklenmiş satırlar ile yanlış anahtar testlerde yakalanıyor |
+| Birim, entegrasyon, güvenlik regresyonu ve MCP testleri | **101 test**; numpy gerektiren 2 test standart Python ortamında atlanıyor |
+| LTT'nin zaman boyunca geçerliliği | Simülasyon: 1.000 örneklik 200 akış. Sertifikalı eşiğin riskinin *herhangi bir anda* α'yı aştığı akış oranı δ sınırında (test toleransı +0,03) |
+| Kesin sertifikalanma zamanı | Tam olarak `min_samples` temiz örnekten sonra sertifikalanıyor (α = δ = %5'te 74), asla daha önce değil |
+| δ harcaması | Σ_v δ_v < δ, sayısal olarak doğrulandı |
+| E-detektör | H0 altında yanlış alarma kadar geçen ortalama süre ≥ ARL; 4 katlık kaymada 150 örnekten kısa sürede tespit |
+| Dondurulmuş sürümler | Canlı model ne kadar eğitilirse eğitilsin sunulan modelin tahminleri değişmiyor; sürümler ve sertifikalar yeniden başlatmada korunuyor; kurcalanmış anlık görüntü reddediliyor; 60 bin özellik × 150 etikette kilit < 0,25 s tutuluyor |
+| Uçtan uca sapma | Sertifikalı modelin altında oracle tersine dönüyor: alarm, yeniden sertifikalama, uyarı ve yeni rejimde < %5 hataya dönüş |
+| CI | Python 3.11, 3.12, 3.13; anlamsal refleks; TypeScript tip denetimi; Docker |
+| Defter bütünlüğü | Değiştirilmiş, silinmiş, araya eklenmiş ve zincirsiz satırlar ile yanlış anahtar yakalanıyor |
 | MCP | Eski ve yeni (2026-07-28) protokol el sıkışması, JSON-RPC hataları, öğrenme döngüsü, yeniden başlatmada kalıcılık, gerçek alt süreçle stdio uçtan uca testi |
 
 ## 7. Henüz doğrulanmayanlar
@@ -175,13 +215,13 @@ Aynı inceleme THEORY §7c'deki istatistiksel kısıtları da ortaya çıkardı.
 | Benchmark'larda oracle olarak **gerçek LLM** yerine veri setinin etiketleri kullanıldı | API anahtarıyla `python benchmarks/run.py --oracle anthropic --n 2000` |
 | **Türkçe** benchmark yok | Çok dilli refleksle Türkçe bir niyet veri seti koşmak |
 | **Gerçek bir MCP istemcisiyle** (Claude Code/Desktop) denenmedi | Tekrar eden sınıflandırma işi olan bir projede `claude mcp add kadi -- kadi mcp` |
-| Tek süreç + SQLite | Postgres desteği (yol haritasında) |
+| Tek süreç; SQLite + anlık görüntü yan dosyaları | Postgres desteği (yol haritasında) |
 | Canlı trafikte çalışmadı | Gerçek bir uygulamada sırasıyla replay → gölge → canlı |
 
 ## 8. Her şeyi yeniden üretmek
 
 ```bash
-python -m unittest discover -s tests                         # 95 test
+python -m unittest discover -s tests                         # 101 test
 python examples/demo.py                                      # demo + panel, :8765
 python benchmarks/run.py                                     # n-gram refleksi (~3,5 MB indirme, SHA-256 doğrulamalı)
 uv venv -p 3.12 .venv && uv pip install -p .venv/bin/python -e ".[embed]"

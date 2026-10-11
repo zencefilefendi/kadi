@@ -152,6 +152,81 @@ class TestGuarantee(unittest.TestCase):
         self.assertLessEqual(st["realized_miscoverage"], 0.08)
 
 
+class TestVersions(Base):
+    """v0.6: the served model is a frozen snapshot certified only on data drawn
+    after its freeze; training never changes what answers."""
+
+    def test_served_model_is_frozen_and_versions_promote(self):
+        q = Choice("v", ["pos", "neg"], policy="ltt")
+        k = Kadi(self.oracle, db=self.db, audit_rate=0.05, seed=0)
+        self.warm(k, q, 3000)
+        b = k._brains["v"]
+        st = k.stats()[0]["version"]
+        self.assertGreaterEqual(st["promotions"], 1)
+        self.assertGreater(b.served.id, 0)
+        self.assertIsNot(b.served.model, b.live)
+        x = k.featurize("love it great product ref 1")
+        before = b.served.model.predict_proba(x)
+        with b.lock:
+            for _ in range(50):
+                b.live.update(x, 1)           # hammer the live model
+        self.assertEqual(before, b.served.model.predict_proba(x))
+        self.assertLessEqual(b.served.frozen_seq, b.seq)
+        k.close()
+
+    def test_versions_and_certificates_survive_restart(self):
+        q = Choice("v", ["pos", "neg"], policy="ltt")
+        k = Kadi(self.oracle, db=self.db, audit_rate=0.05, seed=0)
+        self.warm(k, q, 2500)
+        b = k._brains["v"]
+        sid, lam, issued = b.served.id, b.served.cal.lam, b.versions_issued
+        x = k.featurize("hate it broken again ref 7")
+        p = b.served.model.predict_proba(x)
+        k.close()
+        k2 = Kadi(self.oracle, db=self.db, audit_rate=0.05, seed=0)
+        k2.register(q)
+        b2 = k2._brains["v"]
+        self.assertEqual((b2.served.id, b2.served.cal.lam, b2.versions_issued), (sid, lam, issued))
+        for a, c in zip(p, b2.served.model.predict_proba(x)):
+            self.assertAlmostEqual(a, c, places=5)   # float32 storage
+        k2.close()
+
+    def test_tampered_snapshot_is_refused(self):
+        q = Choice("v", ["pos", "neg"])
+        k = Kadi(self.oracle, db=self.db, audit_rate=0.05, seed=0)
+        self.warm(k, q, 300)
+        k.close()
+        path = k.store._snapshot_path("v")
+        with open(path, "r+b") as f:
+            f.seek(40)
+            f.write(b"\x00\xff\x00\xff")
+        k2 = Kadi(self.oracle, db=self.db)
+        k2.register(q)
+        self.assertEqual(k2._brains["v"].live.seen, 0)   # integrity check failed: fresh start, not poison
+        k2.close()
+
+    def test_checkpoint_holds_the_lock_only_briefly(self):
+        from kadi.learner import OnlineSoftmax
+        rng = random.Random(0)
+        q = Choice("big", [f"c{i}" for i in range(150)])
+        k = Kadi(self.oracle, db=self.db)
+        b = k._brain(q)
+        m = OnlineSoftmax(150)
+        for _ in range(1500):
+            m.update({rng.randrange(1 << 18): rng.random() for _ in range(40)}, rng.randrange(150))
+        b.live = m                                 # ~60k features x 150 labels
+        t = time.perf_counter()
+        with b.lock:
+            job = k._snapshot_job(b)
+        held = time.perf_counter() - t
+        t = time.perf_counter()
+        k._write(job)
+        written = time.perf_counter() - t
+        self.assertLess(held, 0.25, f"lock held {held:.3f}s")
+        self.assertGreater(written, held)          # the heavy part runs outside the lock
+        k.close()
+
+
 class TestResilience(Base):
     def test_fallback_when_oracle_down(self):
         q = Choice("f", ["pos", "neg"])
@@ -182,27 +257,30 @@ class TestResilience(Base):
         self.assertGreater(sum(late) / len(late), 0.95)
         k.close()
 
-    def test_drift_breaker_trips_and_alerts(self):
-        q = Choice("d", ["pos", "neg"], target_error=0.05)
+    def test_drift_alarm_recertifies_and_alerts(self):
+        """The world flips under a certified, frozen model: the e-detector must
+        fire, the served version must lose its certificate (re-certification on
+        fresh data), an alert must be recorded once, and Kadı must recover."""
+        q = Choice("d", ["pos", "neg"], target_error=0.05, policy="ltt")
         alerts = []
-        k = Kadi(self.oracle, db=self.db, audit_rate=0, seed=0, alert_hook=alerts.append, probation_length=100)
-        self.warm(k, q, 1500)
+        k = Kadi(self.oracle, db=self.db, audit_rate=0.2, seed=0, alert_hook=alerts.append,
+                 probation_length=50, drift_arl=100)
+        self.warm(k, q, 2000)
         b = k._brains["d"]
-        with b.lock:  # a model that keeps being confidently wrong on audits
-            b.checks.extend([False] * 20 + [True] * 40)
-            k._check_drift(b)
-            k._check_drift(b)  # second trip within the hour: no duplicate alert
-        self.assertEqual(b.probation, 100)
-        d = None
-        for text, y in stream(5, seed=7):
+        self.assertTrue(b.served.cal.calibrated)
+        before = b.served.id
+        self.flip = True
+        late_wrong = []
+        for i, (text, y) in enumerate(stream(4000, seed=99)):
             self.truth[text] = y
             d = k.decide(q, text)
-        self.assertEqual((d.tier, d.reason), ("oracle", "probation"))
-        self.assertEqual(b.probation, 95)
+            if i >= 3000:
+                late_wrong.append(d.label == y)   # flipped oracle: y is now the wrong answer
+        self.assertNotEqual(b.served.id, before, "served version must be re-issued after the alarm")
         time.sleep(0.1)
-        self.assertEqual(len(alerts), 1)
+        self.assertGreaterEqual(len(alerts), 1)
         self.assertEqual(alerts[0]["kind"], "drift")
-        self.assertEqual(len(k.store.query("SELECT * FROM alerts")), 1)
+        self.assertLess(sum(late_wrong) / len(late_wrong), 0.05, "must have recovered under the new regime")
         k.close()
 
     def test_input_validation(self):
@@ -442,17 +520,19 @@ class TestSecurityRegressions(Base):
         self.assertTrue(d.flagged)
         k.close()
 
-    def test_shadow_probation_can_end(self):
+    def test_shadow_keeps_measuring_after_an_alarm(self):
+        import types
         q = Choice("sh", ["pos", "neg"], mode="shadow")
         k = Kadi(self.oracle, db=self.db, audit_rate=0, seed=0, probation_length=50)
         self.warm(k, q, 1500)
         b = k._brains["sh"]
-        with b.lock:
-            b.checks.extend([False] * 60)
-            k._check_drift(b)
+        with b.lock:   # force an alarm on the served version
+            b.detector.r = [1e9] * len(b.detector.r)
+            k._monitor(b, types.SimpleNamespace(version=b.served.id), "pos", "neg")
+        self.assertGreater(b.probation, 0)
         before = b.shadow_local
-        self.warm(k, q, 400, seed=5)
-        self.assertGreater(b.shadow_local, before)  # still measuring under probation
+        self.warm(k, q, 1500, seed=5)
+        self.assertGreater(b.shadow_local, before)  # shadow kept measuring and re-certified
         k.close()
 
     def test_huge_random_input_is_bounded(self):
@@ -564,6 +644,24 @@ class TestSecurityRegressionsV2(Base):
         r = k.store.verify(derive_chain_key(b"s"))
         self.assertFalse(r["ok"])
         self.assertIn("unchained", r["reason"])
+        k.close()
+
+    def test_model_version_is_recorded_and_chained(self):
+        from kadi.store import derive_chain_key
+        q = Choice("mv", ["pos", "neg"], policy="ltt")
+        k = Kadi(self.oracle, db=self.db, seed=0, secret=b"s")
+        self.warm(k, q, 2500)
+        rows = k.store.query("SELECT tier, model_version, chain_fmt FROM decisions")
+        reflex = [r for r in rows if r["tier"] == "reflex"]
+        self.assertTrue(reflex)
+        self.assertTrue(all(r["model_version"] and r["model_version"] >= 1 for r in reflex))
+        self.assertTrue(all(r["chain_fmt"] == 2 for r in rows))
+        rid = k.store.query("SELECT id FROM decisions WHERE tier='reflex' ORDER BY id LIMIT 1")[0]["id"]
+        k.store.db.execute("UPDATE decisions SET model_version = model_version + 1 WHERE id = ?", (rid,))
+        r = k.store.verify(derive_chain_key(b"s"))
+        self.assertEqual((r["ok"], r["first_bad_id"]), (False, rid))
+        k.store.db.execute("UPDATE decisions SET chain_fmt = 1 WHERE id = ?", (rid,))   # try to hide it
+        self.assertFalse(k.store.verify(derive_chain_key(b"s"))["ok"])
         k.close()
 
     def test_v1_legacy_rows_before_the_chain_are_allowed(self):
